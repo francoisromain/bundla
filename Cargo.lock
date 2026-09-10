@@ -3719,6 +3719,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "lightningcss",
+ "parcel_sourcemap",
  "rolldown",
  "tokio",
  "webadev",
