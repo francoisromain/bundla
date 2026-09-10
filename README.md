@@ -1,24 +1,44 @@
-# webadev bundle
+# webadle
 
-Bundle Html, Css, and Js files and serve with live reload.
+> Bundle Html, Css, and Js with live reload for developpement, or with minification, hashed filenames for release.
 
-Built on the [webadev](https://crates.io/crates/webadev) library.
+> Built with rust on the [webadev](https://crates.io/crates/webadev) library.
 
-## Usage
+## Features
 
-- watches `src/`,
-- rebundles on every change,
-- serves `dev/` or `dist/`,
-- reloads: CSS edits hot-reload the stylesheet, anything else does a full page reload.
+Bundle a static website Html, Css, and Js for developpement or release.
+
+### Developpement (default)
+
+- watch `src`,
+- re-bundle on every change,
+- serve `dev`,
+- hot-reload after CSS edits, full page reload for anything else.
 
 If a bundle fails, the browser stays on the previous one.
 
+### Release
+
+- bundle, minify, hash filenames from `src`
+- output to `dist`
+- option: serve the `dist` directory 
+
+
+## CLI
+
+```bash
+cargo install webadle
+
+# bundle `src/`, serve `dev/`
+webadle
+```
+
 ### Options
 
-- `--src <dir>`: assets directory to watch and bundle (default: `src`)
-- `--dist <dir>`: output or serving directory (default: `dev/` or `dist/` with `--release`/`--serve`)
 - `--release`: bundle, minify, hash filenames, to output dir (default: `dist`)
 - `--serve`: serve the output directory (default: `dist`) without watching or bundling
+- `--src <dir>`: assets directory to watch and bundle (default: `src`)
+- `--dist <dir>`: output or serving directory (default: `dev/` or `dist/` with `--release`/`--serve`)
 - `--port <n>` default 8080 (use `0` for a random free port)
 - `--ip <addr>` default 127.0.0.1 (use `0.0.0.0` to access from other devices)
 - `--open`: open the page in the browser on start
@@ -26,32 +46,51 @@ If a bundle fails, the browser stays on the previous one.
 
 ### Examples
 
-
 ```bash
 # dev server (watch `src/` → bundle → serve `dev/` with live reload
-cargo run
-cargo run -- --port 9000 --open
+webadle
+webadle --port 9000 --open
 
-# production build of `src/` to `dist/`, then exit
-cargo run -- --release
+# release build of `src/` to `dist/`
+webadle --release
 
 # serve an existing `dist/` without bundling
-cargo run -- --serve
+webadle --serve
 
-# production build, then serve it
-cargo run -- --release --serve
+# release build, then serve it
+webadle --release --serve
 
 # serve dist/ in dev mode (rebundles dev output into it)
-cargo run -- --dist dist   
+webadle --dist dist   
 ```
 
-## Layout
+## Library
 
+to-do
+
+## Local installation
+
+```bash
+# clone the repo
+git clone https://github.com/francoisromain/webadle.git
+cd webadle
+
+# build the project
+cargo build --release
+
+# in the `client` directory, bundle `src/`, serve `dev/`
+cd client && ./target/release/webadle --header "Access-Control-Allow-Origin: *"
+
+# install globally from the local package
+# compiles and copies the binary to `~/.cargo/bin/webadle`
+cargo install --path . --locked
+
+# use from anywhere
+# from the current directory, bundle `src/`, serve `dev/` on 127.0.0.1:8080
+cd ~/some/project
+webadle           
+
+# update later after source changes
+cargo install --path . --locked --force
 ```
-src/            assets to bundle (index.html, styles/, scripts/)
-dev/            dev output (unminified + sourcemaps, gitignored)
-dist/           release output (minified, hashed, gitignored)
-bin/
-  bundler.rs    bundling logic
-  main.rs       dev server, --release, or --serve
-```
+

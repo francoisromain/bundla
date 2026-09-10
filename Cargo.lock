@@ -3714,7 +3714,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webadev-bundle"
+name = "webadle"
 version = "0.1.0"
 dependencies = [
  "clap",

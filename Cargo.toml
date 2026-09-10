@@ -1,11 +1,15 @@
 [package]
-name = "webadev-bundle"
+name = "webadle"
 version = "0.1.0"
 edition = "2024"
-
-[[bin]]
-name = "bundle"
-path = "bin/main.rs"
+description = "Bundle Html, Css, and Js with live-reload for dev, or with minification, hashed filenames for release"
+license = "MIT"
+repository = "https://github.com/francoisromain/webadle"
+homepage = "https://github.com/francoisromain/webadle"
+rust-version = "1.88"
+keywords = ["bundle", "live-reload", "web", "development", "watch"]
+categories = ["development-tools"]
+exclude = ["client/**", "sessions/**"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

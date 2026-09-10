@@ -20,7 +20,7 @@ struct Args {
     #[arg(long)]
     dist: Option<PathBuf>,
 
-    /// production build: minify, hash filenames, then exit (or serve with --serve)
+    /// release build: minify, hash filenames, then exit (or serve with --serve)
     #[arg(short, long)]
     release: bool,
 
