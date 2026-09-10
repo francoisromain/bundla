@@ -1,6 +1,6 @@
 # webadev bundle
 
-A tiny setup to bundle Html, Css, and Js files and serve with live reload.
+Bundle Html, Css, and Js files and serve with live reload.
 
 Built on the [webadev](https://crates.io/crates/webadev) library.
 
@@ -8,10 +8,10 @@ Built on the [webadev](https://crates.io/crates/webadev) library.
 
 - watches `src/`,
 - rebundles on every change,
-- serves `dev/` or `dist/`
-- live reload: CSS edits hot-reload the stylesheet, anything else does a full page reload.
+- serves `dev/` or `dist/`,
+- reloads: CSS edits hot-reload the stylesheet, anything else does a full page reload.
 
-If a bundle fails, the browser stays on the last good one.
+If a bundle fails, the browser stays on the previous one.
 
 ### Options
 
@@ -49,9 +49,9 @@ cargo run -- --dist dist
 
 ```
 src/            assets to bundle (index.html, styles/, scripts/)
-dev/            dev-server output (unminified + sourcemaps, gitignored)
+dev/            dev output (unminified + sourcemaps, gitignored)
 dist/           release output (minified, hashed, gitignored)
-rust/
-  mod.rs        the bundling logic (bundle)
-  bin/bundle.rs dev server, --release, or --serve
+bin/
+  bundler.rs    bundling logic
+  main.rs       dev server, --release, or --serve
 ```

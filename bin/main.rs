@@ -6,7 +6,8 @@ use clap::Parser;
 use tokio::sync::broadcast;
 use webadev::{Config, serve, watch};
 
-use webadev_bundle::{Options, bundle};
+mod bundler;
+use bundler::{Options, bundle};
 
 #[derive(Parser)]
 #[command(about = "bundle src into dist; dev server by default, --release builds artifacts only")]
@@ -75,11 +76,11 @@ async fn main() {
 
     match run_mode(args.release, args.serve) {
         RunMode::Dev => dev(&args, dist).await,
-        RunMode::Build => release_bundle(&args.src, &dist).await,
-        RunMode::Serve => serve_existing(&args, dist).await,
+        RunMode::Build => release(&args.src, &dist).await,
+        RunMode::Serve => dir_serve(&args, dist).await,
         RunMode::BuildThenServe => {
-            release_bundle(&args.src, &dist).await;
-            serve_existing(&args, dist).await;
+            release(&args.src, &dist).await;
+            dir_serve(&args, dist).await;
         }
     }
 }
@@ -106,7 +107,7 @@ fn config(args: &Args, dir: PathBuf) -> Config {
     }
 }
 
-async fn release_bundle(src: &Path, dist: &Path) {
+async fn release(src: &Path, dist: &Path) {
     match bundle(src, dist, Options::RELEASE).await {
         Ok(()) => println!("bundled {}", dist.display()),
         Err(err) => {
@@ -116,7 +117,7 @@ async fn release_bundle(src: &Path, dist: &Path) {
     }
 }
 
-async fn serve_existing(args: &Args, dist: PathBuf) {
+async fn dir_serve(args: &Args, dist: PathBuf) {
     let (tx_dist, _rx) = broadcast::channel(100);
     if let Err(err) = serve(tx_dist, config(args, dist)).await {
         eprintln!("{err}");

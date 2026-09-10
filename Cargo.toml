@@ -2,14 +2,10 @@
 name = "webadev-bundle"
 version = "0.1.0"
 edition = "2024"
-default-run = "bundle"
-
-[lib]
-path = "rust/mod.rs"
 
 [[bin]]
 name = "bundle"
-path = "rust/bin/bundle.rs"
+path = "bin/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

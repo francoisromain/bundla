@@ -34,14 +34,14 @@ impl Options {
 /// bundle the html/css/js assets from `src` into `dist`.
 /// `dist` is cleaned first, so stale files never linger.
 pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<(), String> {
-    clean_dist(dist)?;
+    dist_clean(dist)?;
     let css_name = css_bundle(src, dist, options)?;
     let js_name = js_bundle(src, dist, options).await?;
     html_build(src, dist, css_name.as_deref(), js_name.as_deref(), options)?;
     Ok(())
 }
 
-fn clean_dist(dist: &Path) -> Result<(), String> {
+fn dist_clean(dist: &Path) -> Result<(), String> {
     if dist.exists() {
         fs::remove_dir_all(dist)
             .map_err(|err| format!("failed to clean {}: {err}", dist.display()))?;
@@ -85,7 +85,7 @@ fn css_bundle(src: &Path, dist: &Path, options: Options) -> Result<Option<String
     }
 
     let name = if options.hash {
-        format!("styles-{}.css", fnv1a(code.as_bytes()))
+        format!("styles-{}.css", hash_create(code.as_bytes()))
     } else {
         "styles.css".to_string()
     };
@@ -144,7 +144,7 @@ async fn js_bundle(src: &Path, dist: &Path, options: Options) -> Result<Option<S
             continue;
         }
         let final_name = if options.hash {
-            format!("scripts-{}.js", fnv1a(item.content_as_bytes()))
+            format!("scripts-{}.js", hash_create(item.content_as_bytes()))
         } else {
             "scripts.js".to_string()
         };
@@ -183,7 +183,7 @@ fn html_build(
 }
 
 /// std-only FNV-1a 32-bit hash, formatted as 8 hex chars.
-fn fnv1a(bytes: &[u8]) -> String {
+fn hash_create(bytes: &[u8]) -> String {
     let mut hash: u32 = 0x811c9dc5;
     for &byte in bytes {
         hash ^= byte as u32;
