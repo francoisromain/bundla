@@ -1,0 +1,95 @@
+:root {
+  --bg-color: #121212;
+  --text-color: #e0e0e0;
+  --accent: #64ffda;
+  --btn-bg: #1f1f1f;
+  --btn-hover: #333;
+  --font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  line-height: 1.6;
+  padding: 2rem;
+}
+
+.container {
+  max-width: 720px;
+  margin: auto;
+}
+
+header h1 {
+  font-size: 2rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.subtext {
+  font-size: 1rem;
+  margin-bottom: 2rem;
+}
+
+.tinker-box {
+  background-color: #1a1a1a;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  box-shadow: 0 0 20px rgba(100, 255, 218, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.tinker-box:hover {
+  transform: scale(1.01);
+}
+
+h2 {
+  color: #ffb74d;
+  margin-bottom: 0.5rem;
+}
+
+.btn {
+  margin-top: 1rem;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.btn:hover {
+  background-color: var(--btn-hover);
+}
+
+footer {
+  text-align: center;
+  font-size: 0.9rem;
+  margin-top: 3rem;
+  opacity: 0.6;
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 1s ease-in-out both;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

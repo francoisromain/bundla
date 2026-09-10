@@ -1,0 +1,15 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[build-dependencies]
+lightningcss = "1.0.0-alpha.72"
+rolldown = "1"
+tokio = {version = "1", features = ["full"]}
+
+[lib]
+name = "client"
+path = "src/lib.rs"
