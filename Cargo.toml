@@ -1,15 +1,23 @@
 [package]
-name = "client"
+name = "webadev-bundle"
 version = "0.1.0"
 edition = "2024"
-
-[dependencies]
-
-[build-dependencies]
-lightningcss = "1.0.0-alpha.72"
-rolldown = "1"
-tokio = {version = "1", features = ["full"]}
+default-run = "dev"
 
 [lib]
-name = "client"
-path = "src/lib.rs"
+path = "rust/mod.rs"
+
+[[bin]]
+name = "dev"
+path = "rust/bin/dev.rs"
+
+[[bin]]
+name = "bundle"
+path = "rust/bin/bundle.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+lightningcss = "1.0.0-alpha.72"
+rolldown = "1"
+tokio = { version = "1", features = ["full"] }
+webadev = "0.3"

@@ -1,18 +1,52 @@
-A few things I'd improve:
+# to-do
 
-1. architecture
+## Dev vs release bundling
 
-The empty-[lib] + build.rs pattern is fine for now, but if bundling logic grows (imports, sourcemaps, hashed outputs), consider a real bin target (cargo run) that owns the bundling loop — you'd gain --open, watch-mode reuse, and drop the dummy lib. Not urgent.
+Add two bundle modes to `rust/mod.rs`:
 
-2. dev.sh
+| | Dev | Release |
+|---|---|---|
+| minify (css/js) | no | yes |
+| sourcemaps (css/js) | yes (`.map` files) | no |
+| output names | stable (`styles.css`, `scripts.js`) | hashed (`styles-<hash>.css`, `scripts-<hash>.js`) |
 
-Minor: dev.sh could take --port/--host passthrough and --open the browser. 
+### API
+- [ ] add `#[derive(Clone, Copy, PartialEq, Eq, Debug)] pub enum Mode { Dev, Release }`
+- [ ] change signature to `bundle(src: &Path, dist: &Path, mode: Mode) -> Result<(), String>`
 
+### Dev mode (unminified + sourcemaps)
+- [ ] css: `PrinterOptions { minify: false, source_map: Some(...) }` -> `styles.css` + `styles.css.map` (append `sourceMappingURL`)
+- [ ] js: `minify: Bool(false)`, `sourcemap: Some(SourceMapType::File)` -> `scripts.js` + `scripts.js.map`
+- [ ] html: plain copy as today
 
-3. build.rs
+### Release mode (minified + hashed)
+- [ ] css: `minify: true`, no map, output `styles-<hash>.css`
+- [ ] js: `minify: Bool(true)`, output `scripts-<hash>.js`
+- [ ] html: rewrite `./styles.css` / `./scripts.js` in `src/index.html` to the hashed names (after css/js are bundled)
+- [ ] hash: std-only FNV-1a over output bytes -> 8-hex-char suffix (no new dependency)
+- [ ] byte-identical re-runs -> same hashes -> stable names across release builds
 
-- CSS-only reload (≈Vite HMR). Today every change is window.location.reload() — full page flash even for a color tweak. Since the WS channel already exists, dev_server could send reload:css for .css writes and the injected script would just re-fetch the stylesheet. Big UX win, small change.
-- Clean dist/ before writing in build.rs — otherwise stale files linger (e.g. after your index.js→scripts.js rename, dist/index.js would still be served).
-Worth considering
-- And lightningcss currently uses StyleSheet::parse — if you ever add multiple CSS files, switch to lightningcss's Bundler for @import resolution.
-Want me to draft a plan for any of these (1–3 are my top picks)?
+### Bins
+- [ ] `rust/bin/dev.rs` -> call `bundle(..., Mode::Dev)`
+- [ ] `rust/bin/bundle.rs` -> call `bundle(..., Mode::Release)`
+
+### Verify
+- [ ] dev: served css/js unminified, `.map` files present, webadev `event: css` hot-reload still works (stable names are required for that)
+- [ ] bundle: hashed filenames in dist, html references rewritten, css/js minified, no maps
+- [ ] `cargo fmt --check` + `cargo clippy --all-targets` clean
+
+### Notes
+- hashed names stay release-only: dev must keep stable filenames or webadev's css hot-swap will churn hrefs on every edit
+- confirm the exact lightningcss / rolldown sourcemap output formats against the installed versions (lightningcss `to_css` map JSON + comment; rolldown `SourceMapType::File`)
+
+## Open questions
+- [ ] html minification in release? (currently skipped, would need a `minify-html` dep)
+- [ ] `Mode` enum vs `Options { minify, sourcemap, hash }` struct?
+- [ ] add `--mode dev|release` flag to the `bundle` bin, or keep it fixed to Release?
+
+## Done (Option A rewrite)
+- [x] real bin targets owning the bundling loop (`dev`, `bundle`)
+- [x] drop dummy lib, `build.rs`, `dev.sh`, watchexec
+- [x] CSS-only hot reload via webadev (source-side classification)
+- [x] clean `dist/` before writing
+- [x] `--port`/`--ip`/`--open` passthrough via clap
