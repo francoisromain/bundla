@@ -1,5 +1,7 @@
-mod bundler;
-pub use bundler::{Options, bundle};
+pub use webadev::{Config as ServerConfig, Server};
 
-mod command;
-pub use command::{Config, run};
+mod bundler;
+pub use bundler::{Options as BundlerOptions, bundle};
+
+mod server;
+pub use server::{serve, serve_dev};

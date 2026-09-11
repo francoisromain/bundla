@@ -4,7 +4,7 @@ use std::process::exit;
 
 use clap::Parser;
 
-use webadle::{Config, run};
+use webadle::{BundlerOptions, Server, ServerConfig, bundle, serve, serve_dev};
 
 #[derive(Parser)]
 #[command(about = "bundle src into dist; dev server by default, --release builds artifacts only")]
@@ -42,23 +42,92 @@ struct Args {
     headers: Vec<String>,
 }
 
+enum Mode {
+    Dev,
+    Build,
+    Serve,
+    BuildThenServe,
+}
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
-    let config = Config {
-        src: args.src,
-        dist: args.dist,
-        release: args.release,
-        serve: args.serve,
-        port: args.port,
-        ip: args.ip,
-        open: args.open,
-        headers: args.headers,
-    };
-
-    if let Err(err) = run(&config).await {
+    if let Err(err) = run(&args).await {
         eprintln!("{err}");
         exit(1);
     }
+}
+
+async fn run(args: &Args) -> Result<(), String> {
+    let dist = output_dir(args);
+
+    if args.open && args.release && !args.serve {
+        return Err("error: --open requires a running server (--serve)".to_string());
+    }
+    if args.release && !args.serve && !args.headers.is_empty() {
+        return Err("error: --header requires a running server (--serve)".to_string());
+    }
+
+    match mode_select(args.release, args.serve) {
+        Mode::Dev => {
+            let server = serve_dev(&args.src, &server_config(args, dist)).await?;
+            start(server, args.open).await
+        }
+        Mode::Build => {
+            bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
+            println!("bundled {}", dist.display());
+            Ok(())
+        }
+        Mode::Serve => {
+            let server = serve(&server_config(args, dist)).await?;
+            start(server, args.open).await
+        }
+        Mode::BuildThenServe => {
+            bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
+            println!("bundled {}", dist.display());
+            let server = serve(&server_config(args, dist)).await?;
+            start(server, args.open).await
+        }
+    }
+}
+
+fn server_config(args: &Args, dist: PathBuf) -> ServerConfig {
+    ServerConfig {
+        dir: dist,
+        ip: args.ip,
+        port: args.port,
+        headers: args.headers.clone(),
+    }
+}
+
+fn mode_select(release: bool, serve: bool) -> Mode {
+    match (release, serve) {
+        (false, false) => Mode::Dev,
+        (true, false) => Mode::Build,
+        (false, true) => Mode::Serve,
+        (true, true) => Mode::BuildThenServe,
+    }
+}
+
+fn output_dir(args: &Args) -> PathBuf {
+    if let Some(dist) = &args.dist {
+        return dist.clone();
+    }
+
+    if args.release || args.serve {
+        PathBuf::from("dist")
+    } else {
+        PathBuf::from("dev")
+    }
+}
+
+async fn start(server: Server, open: bool) -> Result<(), String> {
+    println!("Serving {}", server.url);
+
+    if open && let Err(err) = open::that(&server.url) {
+        eprintln!("Failed to open browser: {err}");
+    }
+
+    server.run().await
 }
