@@ -1,13 +1,10 @@
 use std::net::IpAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::exit;
 
 use clap::Parser;
-use tokio::sync::broadcast;
-use webadev::{Config, serve, watch};
 
-mod bundler;
-use bundler::{Options, bundle};
+use webadle::{Config, run};
 
 #[derive(Parser)]
 #[command(about = "bundle src into dist; dev server by default, --release builds artifacts only")]
@@ -45,119 +42,22 @@ struct Args {
     headers: Vec<String>,
 }
 
-enum RunMode {
-    Dev,
-    Build,
-    Serve,
-    BuildThenServe,
-}
-
-fn run_mode(release: bool, serve: bool) -> RunMode {
-    match (release, serve) {
-        (false, false) => RunMode::Dev,
-        (true, false) => RunMode::Build,
-        (false, true) => RunMode::Serve,
-        (true, true) => RunMode::BuildThenServe,
-    }
-}
-
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let dist = output_dir(&args);
 
-    if args.open && args.release && !args.serve {
-        eprintln!("error: --open requires a running server (--serve)");
-        exit(1);
-    }
-    if args.release && !args.serve && !args.headers.is_empty() {
-        eprintln!("warning: --header has no effect without --serve");
-    }
-
-    match run_mode(args.release, args.serve) {
-        RunMode::Dev => dev(&args, dist).await,
-        RunMode::Build => release(&args.src, &dist).await,
-        RunMode::Serve => dir_serve(&args, dist).await,
-        RunMode::BuildThenServe => {
-            release(&args.src, &dist).await;
-            dir_serve(&args, dist).await;
-        }
-    }
-}
-
-fn output_dir(args: &Args) -> PathBuf {
-    if let Some(dist) = &args.dist {
-        return dist.clone();
-    }
-
-    if args.release || args.serve {
-        PathBuf::from("dist")
-    } else {
-        PathBuf::from("dev")
-    }
-}
-
-fn config(args: &Args, dir: PathBuf) -> Config {
-    Config {
-        dir,
-        ip: args.ip,
+    let config = Config {
+        src: args.src,
+        dist: args.dist,
+        release: args.release,
+        serve: args.serve,
         port: args.port,
-        headers: args.headers.clone(),
+        ip: args.ip,
         open: args.open,
-    }
-}
+        headers: args.headers,
+    };
 
-async fn release(src: &Path, dist: &Path) {
-    match bundle(src, dist, Options::RELEASE).await {
-        Ok(()) => println!("bundled {}", dist.display()),
-        Err(err) => {
-            eprintln!("{err}");
-            exit(1);
-        }
-    }
-}
-
-async fn dir_serve(args: &Args, dist: PathBuf) {
-    let (tx_dist, _rx) = broadcast::channel(100);
-    if let Err(err) = serve(tx_dist, config(args, dist)).await {
-        eprintln!("{err}");
-        exit(1);
-    }
-}
-
-async fn dev(args: &Args, dist: PathBuf) {
-    let src = &args.src;
-
-    // src-change events: received when the user updates a file
-    let (tx_src, mut rx_src) = broadcast::channel(100);
-    // reload events: sent after a successful bundle
-    let (tx_dist, _rx_dist) = broadcast::channel(100);
-
-    if let Err(err) = watch(tx_src.clone(), src) {
-        eprintln!("Failed to watch {}: {err}", src.display());
-        exit(1);
-    }
-
-    if let Err(err) = bundle(src, &dist, Options::DEV).await {
-        eprintln!("bundle error: {err}");
-        exit(1);
-    }
-
-    let src_clone = src.clone();
-    let dist_clone = dist.clone();
-    let tx_dist_clone = tx_dist.clone();
-    tokio::spawn(async move {
-        while let Ok((reload_type, paths)) = rx_src.recv().await {
-            if let Err(err) = bundle(&src_clone, &dist_clone, Options::DEV).await {
-                eprintln!("bundle error: {err}");
-                // keep the browser on the last good bundle
-                continue;
-            }
-            let _ = tx_dist_clone.send((reload_type, paths));
-        }
-    });
-
-    if let Err(err) = serve(tx_dist, config(args, dist)).await {
+    if let Err(err) = run(&config).await {
         eprintln!("{err}");
         exit(1);
     }
