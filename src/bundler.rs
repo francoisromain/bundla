@@ -164,22 +164,43 @@ fn html_build(
 ) -> Result<(), String> {
     let entry = src.join("index.html");
     if !entry.is_file() {
-        return Ok(());
+        return Err(format!("no index.html found in {}", src.display()));
     }
-    if !options.hash {
+
+    if !options.hash && !options.minify {
         return fs::copy(&entry, dist.join("index.html"))
             .map(|_| ())
             .map_err(|err| format!("failed to copy index.html: {err}"));
     }
-    let html = fs::read_to_string(&entry).map_err(|e| format!("index.html unreadable: {e}"))?;
-    let mut html = html;
-    if let Some(css_name) = css_name {
-        html = html.replace("styles.css", css_name);
+
+    let mut html = fs::read_to_string(&entry).map_err(|e| format!("index.html unreadable: {e}"))?;
+
+    if options.hash {
+        if let Some(css_name) = css_name {
+            html = html.replace("styles.css", css_name);
+        }
+        if let Some(js_name) = js_name {
+            html = html.replace("scripts.js", js_name);
+        }
     }
-    if let Some(js_name) = js_name {
-        html = html.replace("scripts.js", js_name);
+
+    if options.minify {
+        html = html_minify(&html)?;
     }
+
     fs::write(dist.join("index.html"), html).map_err(|e| format!("index.html write error: {e}"))
+}
+
+/// minify an html document with minify-html, keeping closing tags and
+/// structural (`<html>`, `<head>`) opening tags so the output stays readable.
+fn html_minify(html: &str) -> Result<String, String> {
+    let mut cfg = minify_html::Cfg::new();
+    cfg.keep_closing_tags = true;
+    cfg.keep_html_and_head_opening_tags = true;
+    cfg.minify_css = true;
+    cfg.minify_js = true;
+    let minified = minify_html::minify(html.as_bytes(), &cfg);
+    String::from_utf8(minified).map_err(|e| format!("index.html minify error: {e}"))
 }
 
 /// std-only FNV-1a 32-bit hash, formatted as 8 hex chars.
