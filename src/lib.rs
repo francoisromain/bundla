@@ -4,4 +4,4 @@ mod bundler;
 pub use bundler::{Options as BundlerOptions, bundle};
 
 mod server;
-pub use server::{serve, serve_dev};
+pub use server::{serve, dev};

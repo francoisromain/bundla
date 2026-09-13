@@ -1,11 +1,11 @@
 [package]
-name = "webadle"
+name = "bundla"
 version = "0.1.0"
 edition = "2024"
 description = "Bundle Html, Css, and Js with live-reload for dev, or with minification, hashed filenames for release"
 license = "MIT"
-repository = "https://github.com/francoisromain/webadle"
-homepage = "https://github.com/francoisromain/webadle"
+repository = "https://github.com/francoisromain/bundla"
+homepage = "https://github.com/francoisromain/bundla"
 rust-version = "1.88"
 keywords = ["bundle", "live-reload", "web", "development", "watch"]
 categories = ["development-tools"]

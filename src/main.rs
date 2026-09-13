@@ -4,7 +4,7 @@ use std::process::exit;
 
 use clap::Parser;
 
-use webadle::{BundlerOptions, Server, ServerConfig, bundle, serve, serve_dev};
+use bundla::{BundlerOptions, Server, ServerConfig, bundle, dev, serve};
 
 #[derive(Parser)]
 #[command(about = "bundle src into dist; dev server by default, --release builds artifacts only")]
@@ -44,9 +44,9 @@ struct Args {
 
 enum Mode {
     Dev,
-    Build,
+    Release,
     Serve,
-    BuildThenServe,
+    ReleaseThenServe,
 }
 
 #[tokio::main]
@@ -71,28 +71,28 @@ async fn run(args: &Args) -> Result<(), String> {
 
     match mode_select(args.release, args.serve) {
         Mode::Dev => {
-            let server = serve_dev(&args.src, &server_config(args, dist)).await?;
+            let server = dev(&args.src, &server_config_build(args, dist)).await?;
             start(server, args.open).await
         }
-        Mode::Build => {
+        Mode::Release => {
             bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
             println!("bundled {}", dist.display());
             Ok(())
         }
         Mode::Serve => {
-            let server = serve(&server_config(args, dist)).await?;
+            let server = serve(&server_config_build(args, dist)).await?;
             start(server, args.open).await
         }
-        Mode::BuildThenServe => {
+        Mode::ReleaseThenServe => {
             bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
             println!("bundled {}", dist.display());
-            let server = serve(&server_config(args, dist)).await?;
+            let server = serve(&server_config_build(args, dist)).await?;
             start(server, args.open).await
         }
     }
 }
 
-fn server_config(args: &Args, dist: PathBuf) -> ServerConfig {
+fn server_config_build(args: &Args, dist: PathBuf) -> ServerConfig {
     ServerConfig {
         dir: dist,
         ip: args.ip,
@@ -104,9 +104,9 @@ fn server_config(args: &Args, dist: PathBuf) -> ServerConfig {
 fn mode_select(release: bool, serve: bool) -> Mode {
     match (release, serve) {
         (false, false) => Mode::Dev,
-        (true, false) => Mode::Build,
+        (true, false) => Mode::Release,
         (false, true) => Mode::Serve,
-        (true, true) => Mode::BuildThenServe,
+        (true, true) => Mode::ReleaseThenServe,
     }
 }
 
