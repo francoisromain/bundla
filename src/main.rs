@@ -37,6 +37,10 @@ struct Args {
     #[arg(short, long)]
     open: bool,
 
+    /// file served by default for the root and directory requests
+    #[arg(long, default_value = "index.html")]
+    index: String,
+
     /// additional HTTP header on every response (repeatable)
     #[arg(long = "header", value_name = "NAME: VALUE")]
     headers: Vec<String>,
@@ -98,6 +102,7 @@ fn server_config_build(args: &Args, dist: PathBuf) -> ServerConfig {
         ip: args.ip,
         port: args.port,
         headers: args.headers.clone(),
+        index: args.index.clone(),
     }
 }
 

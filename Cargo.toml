@@ -14,9 +14,11 @@ exclude = ["client/**", "sessions/**"]
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 lightningcss = "1.0.0-alpha.72"
+lol_html = "3"
 minify-html = "0.18"
 open = "5"
 parcel_sourcemap = "2.1.1"
 rolldown = "1"
+walkdir = "2"
 tokio = { version = "1", features = ["full"] }
-webadev = "0.5"
+webadev = "0.6"

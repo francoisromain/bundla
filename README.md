@@ -42,6 +42,7 @@ bundla
 - `--port <n>` default 8080 (use `0` for a random free port)
 - `--ip <addr>` default 127.0.0.1 (use `0.0.0.0` to access from other devices)
 - `--open`: open the page in the browser on start
+- `--index <file>`: file served by default for the root and directory requests (default: `index.html`; no flag + no index file → 404 at `/`)
 - `--header`: additional HTTP header on every response (repeatable), e.g. `--header "Access-Control-Allow-Origin: *"`
 
 ### Examples
