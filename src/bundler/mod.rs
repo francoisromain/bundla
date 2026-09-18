@@ -173,3 +173,116 @@ async fn page_bundle(
     fs::write(&out_page_path, html)
         .map_err(|err| format!("failed to write {}: {err}", out_page_path.display()))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn page_path_list_build_finds_and_sorts_html() {
+        let dir = tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+        for rel in [
+            "index.html",
+            "a/b.html",
+            "a/c.html",
+            "styles.css",
+            "noext",
+            "a/b.txt",
+        ] {
+            let path = root.join(rel);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, "").unwrap();
+        }
+
+        let pages = page_path_list_build(&root);
+        let names: Vec<String> = pages
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        assert_eq!(names, ["a/b.html", "a/c.html", "index.html"]);
+    }
+
+    #[test]
+    fn page_path_list_build_empty_returns_empty() {
+        let dir = tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+
+        assert!(page_path_list_build(&root).is_empty());
+    }
+
+    #[tokio::test]
+    async fn page_bundle_unreadable_page_errs() {
+        let dir = tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+        let src = root.join("src");
+        let dist = root.join("dist");
+        fs::create_dir_all(&src).unwrap();
+
+        let mut cache = HashMap::new();
+        let err = page_bundle(
+            &src.join("missing.html"),
+            &src,
+            &dist,
+            Options::RELEASE,
+            &mut cache,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("unreadable"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn page_bundle_release_minifies_and_hashes() {
+        let dir = tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+        let src = root.join("src");
+        let dist = root.join("dist");
+        fs::create_dir_all(src.join("styles")).unwrap();
+        fs::create_dir_all(src.join("scripts")).unwrap();
+        fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+        fs::write(src.join("scripts/app.js"), "console.log('app');\n").unwrap();
+        fs::write(
+            src.join("index.html"),
+            "<html>\n  <head>\n    <link rel=\"stylesheet\" href=\"./styles/main.css\" />\n    <script type=\"module\" src=\"./scripts/app.js\"></script>\n  </head>\n  <body>\n    <p>hello world</p>\n  </body>\n</html>\n",
+        )
+        .unwrap();
+        let html_source = fs::read_to_string(src.join("index.html")).unwrap();
+
+        let mut cache = HashMap::new();
+        page_bundle(
+            &src.join("index.html"),
+            &src,
+            &dist,
+            Options::RELEASE,
+            &mut cache,
+        )
+        .await
+        .unwrap();
+
+        let css_name = cache.get(&src.join("styles/main.css")).unwrap();
+        assert!(css_name.starts_with("main-"), "got: {css_name}");
+        let js_name = cache.get(&src.join("scripts/app.js")).unwrap();
+        assert!(js_name.starts_with("app-"), "got: {js_name}");
+
+        let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+        assert!(out_html.contains(css_name));
+        assert!(out_html.contains(js_name));
+        assert!(!out_html.contains("main.css") && !out_html.contains("app.js"));
+        assert!(
+            out_html.len() < html_source.len(),
+            "expected minified output, got: {out_html}"
+        );
+    }
+}

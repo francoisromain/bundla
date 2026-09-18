@@ -48,3 +48,86 @@ pub fn css_bundle(
     fs::write(out.join(&name), code).map_err(|err| format!("css output write error: {err}"))?;
     Ok(name)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    fn write_css(source: &std::path::Path, content: &str) {
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(source, content).unwrap();
+    }
+
+    #[test]
+    fn css_parse_error_on_invalid_rules() {
+        let dir = tempdir().unwrap();
+        let source = dir.path().join("styles/bad.css");
+        write_css(&source, "}");
+
+        let err = css_bundle(
+            &source,
+            &dir.path().join("out"),
+            Path::new("styles"),
+            Options::DEV,
+        )
+        .unwrap_err();
+        assert!(err.contains("css parse error"), "got: {err}");
+    }
+
+    #[test]
+    fn css_source_unreadable_errs() {
+        let dir = tempdir().unwrap();
+        let source = dir.path().join("missing.css");
+
+        let err = css_bundle(
+            &source,
+            &dir.path().join("out"),
+            Path::new(""),
+            Options::DEV,
+        )
+        .unwrap_err();
+        assert!(err.contains("css source unreadable"), "got: {err}");
+    }
+
+    #[test]
+    fn css_dev_emits_map_and_sourcemap_tail() {
+        let dir = tempdir().unwrap();
+        let source = dir.path().join("styles/theme.css");
+        write_css(&source, "body { color: red; }\n");
+        let dist = dir.path().join("out");
+
+        let name = css_bundle(&source, &dist, Path::new("styles"), Options::DEV).unwrap();
+        assert_eq!(name, "theme.css");
+        let code = fs::read_to_string(dist.join("styles/theme.css")).unwrap();
+        assert!(
+            code.ends_with("/*# sourceMappingURL=theme.map */"),
+            "got: {code}"
+        );
+        assert!(dist.join("styles/theme.map").is_file());
+    }
+
+    #[test]
+    fn css_release_minifies_and_hashes_without_map() {
+        let dir = tempdir().unwrap();
+        let source = dir.path().join("styles/theme.css");
+        write_css(&source, "body { color: red; }\n");
+        let dist = dir.path().join("out");
+
+        let name = css_bundle(&source, &dist, Path::new("styles"), Options::RELEASE).unwrap();
+        assert!(
+            name.starts_with("theme-") && name.ends_with(".css"),
+            "got: {name}"
+        );
+        assert!(!dist.join("styles/theme.map").exists());
+        let code = fs::read_to_string(dist.join("styles").join(&name)).unwrap();
+        assert!(code.contains("color"), "got: {code}");
+        assert!(
+            !code.contains(char::is_whitespace),
+            "expected minified output, got: {code}"
+        );
+    }
+}

@@ -7,7 +7,10 @@ use clap::Parser;
 use bundla::{BundlerOptions, Server, ServerConfig, bundle, dev, serve};
 
 #[derive(Parser)]
-#[command(about = "bundle src into dist; dev server by default, --release builds artifacts only")]
+#[command(
+    about = "bundle src into dist; dev server by default, --release builds artifacts only",
+    version
+)]
 struct Args {
     /// assets directory to watch and bundle
     #[arg(long, default_value = "src")]
@@ -135,4 +138,104 @@ async fn start(server: Server, open: bool) -> Result<(), String> {
     }
 
     server.run().await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use super::*;
+
+    fn args(
+        release: bool,
+        serve: bool,
+        open: bool,
+        dist: Option<PathBuf>,
+        headers: Vec<String>,
+    ) -> Args {
+        Args {
+            src: PathBuf::from("src"),
+            dist,
+            release,
+            serve,
+            port: 8080,
+            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            open,
+            index: "index.html".to_string(),
+            headers,
+        }
+    }
+
+    #[test]
+    fn mode_select_maps_combos() {
+        assert!(matches!(mode_select(false, false), Mode::Dev));
+        assert!(matches!(mode_select(true, false), Mode::Release));
+        assert!(matches!(mode_select(false, true), Mode::Serve));
+        assert!(matches!(mode_select(true, true), Mode::ReleaseThenServe));
+    }
+
+    #[test]
+    fn output_dir_explicit_overrides() {
+        let explicit = args(false, false, false, Some(PathBuf::from("custom")), vec![]);
+        assert_eq!(output_dir(&explicit), PathBuf::from("custom"));
+
+        let release = args(true, false, false, Some(PathBuf::from("custom")), vec![]);
+        assert_eq!(output_dir(&release), PathBuf::from("custom"));
+    }
+
+    #[test]
+    fn output_dir_defaults_dev() {
+        let dev = args(false, false, false, None, vec![]);
+        assert_eq!(output_dir(&dev), PathBuf::from("dev"));
+    }
+
+    #[test]
+    fn output_dir_defaults_release_or_serve() {
+        let release = args(true, false, false, None, vec![]);
+        assert_eq!(output_dir(&release), PathBuf::from("dist"));
+
+        let serve = args(false, true, false, None, vec![]);
+        assert_eq!(output_dir(&serve), PathBuf::from("dist"));
+
+        let both = args(true, true, false, None, vec![]);
+        assert_eq!(output_dir(&both), PathBuf::from("dist"));
+    }
+
+    #[test]
+    fn server_config_build_maps_fields() {
+        let parsed = args(
+            false,
+            false,
+            true,
+            Some(PathBuf::from("out")),
+            vec!["X: Y".into()],
+        );
+        let config = server_config_build(&parsed, PathBuf::from("final"));
+
+        assert_eq!(config.dir, PathBuf::from("final"));
+        assert_eq!(config.ip, parsed.ip);
+        assert_eq!(config.port, 8080);
+        assert_eq!(config.headers, vec!["X: Y"]);
+        assert_eq!(config.index, "index.html");
+    }
+
+    #[tokio::test]
+    async fn run_rejects_open_without_server() {
+        let parsed = args(true, false, true, None, vec![]);
+        let err = run(&parsed).await.unwrap_err();
+        assert!(
+            err.contains("--open requires a running server"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_rejects_headers_without_server() {
+        let parsed = args(true, false, false, None, vec!["X: Y".into()]);
+        let err = run(&parsed).await.unwrap_err();
+        assert!(
+            err.contains("--header requires a running server"),
+            "got: {err}"
+        );
+    }
 }

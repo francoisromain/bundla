@@ -117,3 +117,134 @@ pub fn html_minify(html: &str) -> Result<String, String> {
     let minified = minify_html::minify(html.as_bytes(), &cfg);
     String::from_utf8(minified).map_err(|err| format!("html minify error: {err}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn page() -> PathBuf {
+        PathBuf::from("index.html")
+    }
+
+    #[test]
+    fn extract_collects_module_script_then_stylesheet() {
+        let html = r#"
+            <html><head>
+                <script type="module" src="./scripts/main.js"></script>
+                <link rel="stylesheet" href="./styles/main.css" />
+            </head></html>
+        "#;
+
+        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        assert_eq!(refs, ["./scripts/main.js", "./styles/main.css"]);
+    }
+
+    #[test]
+    fn extract_skips_classic_scripts() {
+        let html = r#"<script src="./legacy.js"></script>"#;
+
+        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn extract_skips_empty_refs() {
+        let html = r#"
+            <script type="module" src=""></script>
+            <script type="module" src="   "></script>
+            <link rel="stylesheet" href="" />
+        "#;
+
+        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn extract_ignores_non_stylesheet_links() {
+        let html = r#"
+            <link rel="icon" href="/favicon.ico" />
+            <link rel="preload" href="/app.css" />
+            <a href="./styles/main.css">css</a>
+        "#;
+
+        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn extract_keeps_remote_refs() {
+        let html = r#"
+            <link rel="stylesheet" href="https://cdn.example.com/x.css" />
+            <script type="module" src="//cdn.example.com/app.js"></script>
+        "#;
+
+        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        assert_eq!(
+            refs,
+            ["https://cdn.example.com/x.css", "//cdn.example.com/app.js"]
+        );
+    }
+
+    #[test]
+    fn rewrite_replaces_mapped_refs() {
+        let html = r#"<script type="module" src="./scripts/main.js"></script>
+<link rel="stylesheet" href="./styles/main.css" />"#;
+        let map = HashMap::from([
+            (
+                "./scripts/main.js".to_string(),
+                "./scripts/main-abc.js".to_string(),
+            ),
+            (
+                "./styles/main.css".to_string(),
+                "./styles/main-abc.css".to_string(),
+            ),
+        ]);
+
+        let out = html_rewrite(html, &map).unwrap();
+        assert!(out.contains("./scripts/main-abc.js"));
+        assert!(out.contains("./styles/main-abc.css"));
+        assert!(!out.contains("./scripts/main.js"));
+        assert!(!out.contains("./styles/main.css"));
+    }
+
+    #[test]
+    fn rewrite_dedupes_duplicate_refs() {
+        let html = r#"<script type="module" src="./a.js"></script>
+<script type="module" src="./a.js"></script>"#;
+        let map = HashMap::from([("./a.js".to_string(), "./a-hash.js".to_string())]);
+
+        let out = html_rewrite(html, &map).unwrap();
+        assert_eq!(out.matches("./a-hash.js").count(), 1);
+    }
+
+    #[test]
+    fn rewrite_empty_map_is_unchanged() {
+        let html = "<html><body>hi</body></html>";
+
+        let out = html_rewrite(html, &HashMap::new()).unwrap();
+        assert_eq!(out, html);
+    }
+
+    #[test]
+    fn rewrite_leaves_unmapped_content() {
+        let html = r#"<script type="module" src="./a.js"></script><p>keep</p>"#;
+        let map = HashMap::from([("./b.js".to_string(), "./b-hash.js".to_string())]);
+
+        let out = html_rewrite(html, &map).unwrap();
+        assert!(out.contains("<p>keep</p>"));
+        assert!(out.contains("./a.js"));
+    }
+
+    #[test]
+    fn minify_compresses_and_keeps_structure() {
+        let html = "<html>\n  <head>\n    <title>t</title>\n  </head>\n  <body>\n    <p>hello world</p>\n  </body>\n</html>";
+
+        let out = html_minify(html).unwrap();
+        assert!(out.contains("<html>"));
+        assert!(out.contains("<head>"));
+        assert!(out.contains("hello world"));
+        assert!(out.len() < html.len());
+    }
+}

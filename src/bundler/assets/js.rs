@@ -71,3 +71,91 @@ pub async fn js_bundle(
 
     js_name.ok_or_else(|| format!("no js output for {}", source.display()))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    fn write_js(source: &std::path::Path, content: &str) {
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(source, content).unwrap();
+    }
+
+    #[tokio::test]
+    async fn js_syntax_error_returns_bundle_error() {
+        let dir = tempdir().unwrap();
+        let src = fs::canonicalize(dir.path()).unwrap();
+        let source = src.join("scripts/app.js");
+        write_js(&source, "const = ;\n");
+
+        let err = js_bundle(
+            &source,
+            &src,
+            Path::new("scripts/app.js"),
+            &src.join("out"),
+            Path::new("scripts"),
+            Options::DEV,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("js bundle error"), "got: {err}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn js_non_utf8_rel_path_errs() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempdir().unwrap();
+        let src = fs::canonicalize(dir.path()).unwrap();
+        let rel = std::path::Path::new(std::ffi::OsStr::from_bytes(&[0xff, b'.', b'j', b's']));
+        fs::write(src.join(rel), "console.log(1);\n").unwrap();
+
+        let err = js_bundle(
+            &fs::canonicalize(src.join(rel)).unwrap(),
+            &src,
+            rel,
+            &src.join("out"),
+            Path::new(""),
+            Options::DEV,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("not valid utf-8"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn js_release_hashes_without_map() {
+        let dir = tempdir().unwrap();
+        let src = fs::canonicalize(dir.path()).unwrap();
+        let source = src.join("scripts/app.js");
+        write_js(&source, "console.log('app');\n");
+        let dist = src.join("out");
+
+        let name = js_bundle(
+            &source,
+            &src,
+            Path::new("scripts/app.js"),
+            &dist,
+            Path::new("scripts"),
+            Options::RELEASE,
+        )
+        .await
+        .unwrap();
+        assert!(
+            name.starts_with("app-") && name.ends_with(".js"),
+            "got: {name}"
+        );
+        assert!(dist.join("scripts").join(&name).is_file());
+        let maps: Vec<_> = fs::read_dir(dist.join("scripts"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".map"))
+            .collect();
+        assert!(maps.is_empty(), "expected no sourcemaps, got: {maps:?}");
+    }
+}
