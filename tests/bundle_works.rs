@@ -220,6 +220,65 @@ async fn shared_asset_bundled_once_across_pages() {
 }
 
 #[tokio::test]
+async fn css_import_bundled_and_rewritten() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "index.html",
+                r#"<link rel="stylesheet" href="./styles/main.css" />"#,
+            ),
+            (
+                "styles/main.css",
+                "@import url(\"./sub/reset.css\");\nbody { color: black; }\n",
+            ),
+            ("styles/sub/reset.css", "p { margin: 0; }\n"),
+        ],
+    );
+
+    let dist = dir.path().join("dist");
+    bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+
+    let main_names: Vec<String> = dir_names(&dist.join("styles"))
+        .into_iter()
+        .filter(|n| n.ends_with(".css"))
+        .collect();
+    assert_eq!(
+        main_names.len(),
+        1,
+        "expected one main output: {main_names:?}"
+    );
+    let main_name = &main_names[0];
+    assert!(
+        main_name.starts_with("main-") && main_name.ends_with(".css"),
+        "{main_name}"
+    );
+
+    let reset_names = dir_names(&dist.join("styles/sub"));
+    assert_eq!(
+        reset_names.len(),
+        1,
+        "expected one reset output: {reset_names:?}"
+    );
+    let reset_name = &reset_names[0];
+    assert!(
+        reset_name.starts_with("reset-") && reset_name.ends_with(".css"),
+        "{reset_name}"
+    );
+
+    let main_css = fs::read_to_string(dist.join("styles").join(main_name)).unwrap();
+    assert!(
+        main_css.contains(&format!("./sub/{reset_name}")),
+        "import must point at the bundled file, got: {main_css}"
+    );
+
+    let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(out_html.contains(main_name));
+}
+
+#[tokio::test]
 async fn bundle_errors_no_html_pages() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");

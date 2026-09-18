@@ -4,7 +4,7 @@ mod path;
 mod static_assets;
 
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -152,15 +152,16 @@ async fn page_bundle(
     let mut asset_ref_rewritten_map: HashMap<String, String> = HashMap::new();
     for asset_ref in asset_refs {
         if let Some(asset_path) = asset_ref_path_resolve(src, page_path, &asset_ref)? {
-            let file_name = match cache.entry(asset_path.clone()) {
-                Entry::Vacant(entry) => {
-                    let name = asset_process(&asset_path, src, dist, options).await?;
+            let file_name = match cache.get(&asset_path) {
+                Some(file_name) => file_name.clone(),
+                None => {
+                    let name = asset_process(&asset_path, src, dist, options, cache).await?;
 
-                    entry.insert(name)
+                    cache.insert(asset_path.clone(), name.clone());
+                    name
                 }
-                Entry::Occupied(entry) => entry.into_mut(),
             };
-            let asset_ref_rewritten = asset_ref_rewrite(&asset_ref, file_name);
+            let asset_ref_rewritten = asset_ref_rewrite(&asset_ref, &file_name);
             asset_ref_rewritten_map.insert(asset_ref, asset_ref_rewritten);
         }
     }

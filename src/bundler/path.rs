@@ -153,7 +153,7 @@ fn path_normalize(path: &Path) -> PathBuf {
 
 // check if the value is a remote or absolute references
 // `http:`, `//`, `data:`, `mailto:`, `/path`
-fn is_remote_or_absolute(value: &str) -> bool {
+pub fn is_remote_or_absolute(value: &str) -> bool {
     if value.starts_with('/') {
         return true;
     }
@@ -166,7 +166,7 @@ fn is_remote_or_absolute(value: &str) -> bool {
 }
 
 // split a url reference into its path and any `?query`/`#fragment` suffix
-fn url_ref_split(url_ref: &str) -> (&str, &str) {
+pub fn url_ref_split(url_ref: &str) -> (&str, &str) {
     match url_ref.find(['?', '#']) {
         Some(idx) => (&url_ref[..idx], &url_ref[idx..]),
         None => (url_ref, ""),

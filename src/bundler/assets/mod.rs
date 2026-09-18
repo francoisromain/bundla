@@ -2,6 +2,7 @@ mod css;
 mod js;
 
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -22,6 +23,7 @@ pub async fn asset_process(
     src: &Path,
     dist: &Path,
     options: Options,
+    cache: &mut HashMap<PathBuf, String>,
 ) -> Result<String, String> {
     let asset_path_relative = asset_path
         .strip_prefix(src)
@@ -35,7 +37,7 @@ pub async fn asset_process(
         .parent()
         .unwrap_or_else(|| Path::new(""));
     let file_name = match ext.as_str() {
-        e if CSS_EXTENSIONS.contains(&e) => css_bundle(asset_path, dist, dir, options)?,
+        e if CSS_EXTENSIONS.contains(&e) => css_bundle(asset_path, src, dist, dir, options, cache)?,
         e if JS_EXTENSIONS.contains(&e) => {
             js_bundle(asset_path, src, asset_path_relative, dist, dir, options).await?
         }
@@ -182,9 +184,15 @@ mod tests {
         let dist = src.join("out");
         fs::write(src.join("THEME.CSS"), "body { color: red; }").unwrap();
 
-        let name = asset_process(&src.join("THEME.CSS"), &src, &dist, Options::DEV)
-            .await
-            .unwrap();
+        let name = asset_process(
+            &src.join("THEME.CSS"),
+            &src,
+            &dist,
+            Options::DEV,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(name, "THEME.css");
         assert!(dist.join("THEME.css").is_file());
         assert!(dist.join("THEME.map").is_file());
@@ -199,9 +207,15 @@ mod tests {
         fs::create_dir_all(&styles).unwrap();
         fs::write(styles.join("theme.css"), "body { color: red; }").unwrap();
 
-        let name = asset_process(&styles.join("theme.css"), &src, &dist, Options::DEV)
-            .await
-            .unwrap();
+        let name = asset_process(
+            &styles.join("theme.css"),
+            &src,
+            &dist,
+            Options::DEV,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(name, "theme.css");
         assert!(dist.join("styles/theme.css").is_file());
         assert!(dist.join("styles/theme.map").is_file());
@@ -216,9 +230,15 @@ mod tests {
         fs::create_dir_all(&scripts).unwrap();
         fs::write(scripts.join("app.js"), "console.log('hi');\n").unwrap();
 
-        let name = asset_process(&scripts.join("app.js"), &src, &dist, Options::DEV)
-            .await
-            .unwrap();
+        let name = asset_process(
+            &scripts.join("app.js"),
+            &src,
+            &dist,
+            Options::DEV,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
         assert_eq!(name, "app.js");
         assert!(dist.join("scripts/app.js").is_file());
         assert!(dist.join("scripts/app.js.map").is_file());
@@ -231,9 +251,15 @@ mod tests {
         let dist = src.join("out");
         fs::write(src.join("image.png"), "png").unwrap();
 
-        let err = asset_process(&src.join("image.png"), &src, &dist, Options::DEV)
-            .await
-            .unwrap_err();
+        let err = asset_process(
+            &src.join("image.png"),
+            &src,
+            &dist,
+            Options::DEV,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap_err();
         assert!(err.contains("unsupported asset type"), "got: {err}");
     }
 
@@ -251,9 +277,15 @@ mod tests {
             sourcemap: true,
             hash: true,
         };
-        let name = asset_process(&scripts.join("app.js"), &src, &dist, options)
-            .await
-            .unwrap();
+        let name = asset_process(
+            &scripts.join("app.js"),
+            &src,
+            &dist,
+            options,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
 
         let dist_dir = dist.join("scripts");
         assert!(dist_dir.join(&name).is_file(), "missing {}", name);
