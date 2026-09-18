@@ -11,6 +11,12 @@ use super::Options;
 use css::css_bundle;
 use js::js_bundle;
 
+/// bundled css extensions, lowercased
+pub const CSS_EXTENSIONS: [&str; 1] = ["css"];
+
+/// bundled js extensions, lowercased
+pub const JS_EXTENSIONS: [&str; 6] = ["js", "mjs", "cjs", "ts", "mts", "cts"];
+
 pub async fn asset_process(
     asset_path: &Path,
     src: &Path,
@@ -29,8 +35,8 @@ pub async fn asset_process(
         .parent()
         .unwrap_or_else(|| Path::new(""));
     let file_name = match ext.as_str() {
-        "css" => css_bundle(asset_path, dist, dir, options)?,
-        "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" => {
+        e if CSS_EXTENSIONS.contains(&e) => css_bundle(asset_path, dist, dir, options)?,
+        e if JS_EXTENSIONS.contains(&e) => {
             js_bundle(asset_path, src, asset_path_relative, dist, dir, options).await?
         }
         other => {

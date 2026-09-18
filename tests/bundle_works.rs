@@ -29,6 +29,83 @@ const PAGE: &str = r#"<html><head>
 </head><body>welcome</body></html>
 "#;
 
+const LOGO_PNG: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+
+#[tokio::test]
+async fn static_assets_are_copied_in_release() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "index.html",
+                r#"<html><head>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="./styles/main.css" />
+  <script type="module" src="./scripts/app.js"></script>
+</head><body><img src="./img/logo.png" alt="logo" /></body></html>"#,
+            ),
+            (
+                "styles/main.css",
+                "body { background: url(\"../img/logo.png\"); }\n",
+            ),
+            ("scripts/app.js", "console.log('app');\n"),
+            ("scripts/misc.js", "// unreferenced, must be dropped\n"),
+            ("fonts/x.woff", "woff-bytes"),
+            ("favicon.ico", "icon-bytes"),
+            (".nojekyll", "hidden must not leak"),
+        ],
+    );
+    fs::create_dir_all(src.join("img")).unwrap();
+    fs::write(src.join("img/logo.png"), LOGO_PNG).unwrap();
+
+    let dist = dir.path().join("dist");
+    bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+
+    assert_eq!(
+        fs::read(src.join("img/logo.png")).unwrap(),
+        fs::read(dist.join("img/logo.png")).unwrap(),
+        "static image must be byte-identical"
+    );
+    assert_eq!(
+        fs::read_to_string(dist.join("fonts/x.woff")).unwrap(),
+        "woff-bytes"
+    );
+    assert_eq!(
+        fs::read_to_string(dist.join("favicon.ico")).unwrap(),
+        "icon-bytes"
+    );
+
+    let scripts = dir_names(&dist.join("scripts"));
+    assert_eq!(
+        scripts.len(),
+        1,
+        "misc.js must not be copied, got: {scripts:?}"
+    );
+    assert!(
+        scripts[0].starts_with("app-") && scripts[0].ends_with(".js"),
+        "got: {}",
+        scripts[0]
+    );
+    let styles = dir_names(&dist.join("styles"));
+    assert_eq!(
+        styles.len(),
+        1,
+        "expected only the hashed bundle in styles: {styles:?}"
+    );
+
+    assert!(
+        !dist.join(".nojekyll").exists(),
+        "dotted files must not be copied"
+    );
+    let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(out_html.contains("./img/logo.png"));
+    assert!(out_html.contains("/favicon.ico"));
+    assert!(out_html.contains(&styles[0]));
+    assert!(out_html.contains(&scripts[0]));
+}
+
 #[tokio::test]
 async fn dev_bundle_mirrors_and_rewrites() {
     let dir = tempdir().unwrap();

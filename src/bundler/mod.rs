@@ -1,6 +1,7 @@
 mod assets;
 mod html;
 mod path;
+mod static_assets;
 
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -13,6 +14,7 @@ use walkdir::WalkDir;
 use assets::asset_process;
 use html::{html_asset_refs_extract, html_minify, html_rewrite};
 use path::{asset_ref_path_resolve, asset_ref_rewrite, dist_guard};
+use static_assets::static_asset_copy;
 
 /// bundle options for css/js/html output.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -75,6 +77,12 @@ pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<(), Str
             std::process::id()
         ));
 
+    if let Err(err) = static_asset_copy(&src, &dist_tmp) {
+        let _ = fs::remove_dir_all(&dist_tmp);
+
+        return Err(err);
+    }
+
     if let Err(err) = page_list_bundle(&page_path_list, &src, &dist_tmp, options).await {
         let _ = fs::remove_dir_all(&dist_tmp);
 
@@ -115,7 +123,10 @@ fn page_path_list_build(dir: &Path) -> Vec<PathBuf> {
         .into_iter()
         .filter_map(Result::ok)
         .map(|e| e.into_path())
-        .filter(|p| p.extension().is_some_and(|ext| ext == "html"))
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+        })
         .collect();
     pages.sort();
 
@@ -188,6 +199,7 @@ mod tests {
         let root = fs::canonicalize(dir.path()).unwrap();
         for rel in [
             "index.html",
+            "ABOUT.HTML",
             "a/b.html",
             "a/c.html",
             "styles.css",
@@ -211,7 +223,7 @@ mod tests {
                     .replace('\\', "/")
             })
             .collect();
-        assert_eq!(names, ["a/b.html", "a/c.html", "index.html"]);
+        assert_eq!(names, ["ABOUT.HTML", "a/b.html", "a/c.html", "index.html"]);
     }
 
     #[test]
