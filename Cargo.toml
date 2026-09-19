@@ -1,8 +1,8 @@
 [package]
 name = "bundla"
-version = "0.1.0"
+version = "0.1.3"
 edition = "2024"
-description = "Bundle Html, Css, and Js with live-reload for dev, or with minification, hashed filenames for release"
+description = "Bundle HTML, CSS, and JS/TS: dev mode with live-reload or release mode with minification and hashed filenames"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/francoisromain/bundla"

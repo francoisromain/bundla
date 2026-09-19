@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bundla — bundle html, css, and js with live-reload</title>
+  <title>Bundla — bundle HTML, CSS, and JS/TS</title>
   <link rel="icon" type="image/svg+xml" href="./assets/bundla.svg" />
   <link rel="stylesheet" href="./styles/styles.css" />
 </head>
@@ -14,18 +14,26 @@
     <h1 id="top">Bundla</h1>
 
     <p align="center">
-      <br>
+      <br />
       <a href="https://github.com/francoisromain/bundla">
-        <img src="./assets/bundla.svg" alt="Bundla logo" width="160">
+        <img src="./assets/bundla.svg" alt="Bundla logo" width="160" />
       </a>
-      <br>
+      <br />
     </p>
 
-    <p>Bundle Html, Css, and Js with live-reload for development, or with minification and hashed filenames for release.</p>
-    <p>Built with rust on the <a href="https://crates.io/crates/webadev">webadev</a> library.</p>
+    <p>Bundle HTML, CSS, and JS/TS:</p>
+    <ul>S
+      <li>Development mode with live-reload,</li>
+      <li>Release mode with minification and hashed filenames.</li>
+    </ul>
+    <p>
+      Built with rust on the
+      <a href="https://crates.io/crates/webadev">webadev</a> library.
+    </p>
     <nav>
       <ul>
-        <li><a href="#features">Features</a></li>
+        <li><a href="#development-mode">Development mode</a></li>
+        <li><a href="#release-mode">Release mode</a></li>
         <li><a href="#conventions">Conventions</a></li>
         <li><a href="#cli">CLI</a></li>
         <li><a href="#library">Library</a></li>
@@ -36,36 +44,48 @@
   </header>
 
   <main>
-    <h2 id="features">Features</h2>
+    <h2 id="development-mode">Development mode (default)</h2>
     <ul>
-      <li>Bundle a static website Html, Css, and Js for development or release.</li>
+      <li>Watch <code>src</code> and re-bundle on every change.</li>
+      <li>Output to <code>dev</code> and serve.</li>
+      <li>Hot-reload after CSS edits, full page reload for HTML and JS.</li>
     </ul>
 
-    <h3>Developpement (default)</h3>
+    <h2 id="release-mode">Release</h2>
     <ul>
-      <li>Watch <code>src</code>,</li>
-      <li>re-bundle on every change to <code>dev</code>,</li>
-      <li>serve <code>dev</code>,</li>
-      <li>hot-reload after CSS edits, full page reload for anything else.</li>
+      <li>Bundle, minify, hash filenames from <code>src</code>.</li>
+      <li>Output to <code>dist</code>.</li>
+      <li>Option: serve the <code>dist</code> directory.</li>
     </ul>
-    <p>If a bundle fails, the browser stays on the previous one.</p>
-
-    <h3>Release</h3>
-    <ul>
-      <li>Bundle, minify, hash filenames from <code>src</code></li>
-      <li>output to <code>dist</code></li>
-      <li>option: serve the <code>dist</code> directory</li>
-    </ul>
-    <p>Atomic swap: the build renders into a temporary sibling of <code>dist</code> and swaps it in only on success, so a failed build never leaves a wiped or partial output.</p>
 
     <h2 id="conventions">Conventions</h2>
     <ul>
-      <li>every <code>.html</code> file under <code>src</code> is a page entry, mirrored to <code>dist</code></li>
-      <li><code>&lt;link rel="stylesheet"&gt;</code> and <code>&lt;script type="module"&gt;</code> references are bundled (one output per asset, cached across pages) and rewritten in place; <code>type="module"</code> is required for scripts</li>
-      <li>the source layout is mirrored in the output and <code>?query</code>/<code>#fragment</code> suffixes on references are preserved</li>
-      <li>relative css <code>url()</code> and css-to-css <code>@import</code> targets are bundled and rewritten; remote and absolute URLs are left for the browser to resolve</li>
-      <li>everything else under <code>src</code> is copied as-is (static assets)</li>
-      <li><code>dist</code> must not overlap <code>src</code></li>
+      <li>
+        Every <code>.html</code> file under <code>src</code> is a page entry, mirrored to <code>dist</code>.
+      </li>
+      <li>
+        <code>&lt;link rel="stylesheet"&gt;</code> and <code>&lt;script type="module"&gt;</code> references are
+        bundled (one output per asset, cached across pages) and rewritten in place; <code>type="module"</code> is
+        required for scripts.
+      </li>
+      <li>
+        The source layout is mirrored in the output and <code>?query</code>/<code>#fragment</code> suffixes on
+        references are preserved.
+      </li>
+      <li>
+        Relative css <code>url()</code> and css-to-css <code>@import</code> targets are bundled and rewritten; remote
+        and absolute URLs are left for the browser to resolve.
+      </li>
+      <li>
+        Everything else under <code>src</code> is copied as-is (static assets).
+      </li>
+      <li>
+        <code>dist</code> must not overlap <code>src</code>.
+      </li>
+      <li>
+        The build renders into a temporary sibling of `dev`/`dist` and swaps it in only on success, so a failed build
+        never leaves a partial output.
+      </li>
     </ul>
 
     <h2 id="cli">CLI</h2>
@@ -78,15 +98,36 @@ bundla</code></pre>
 
     <h3>Options</h3>
     <ul>
-      <li><code>--release</code>: bundle, minify, hash filenames, to output dir (default: <code>dist</code>)</li>
-      <li><code>--serve</code>: serve the output directory (default: <code>dist</code>) without watching or bundling</li>
-      <li><code>--src &lt;dir&gt;</code>: assets directory to watch and bundle (default: <code>src</code>)</li>
-      <li><code>--dist &lt;dir&gt;</code>: output or serving directory (default to <code>dev/</code> or <code>dist/</code> with <code>--release</code>/<code>--serve</code>)</li>
-      <li><code>--port &lt;n&gt;</code> default 8080 (use <code>0</code> for a random free port)</li>
-      <li><code>--ip &lt;addr&gt;</code> default 127.0.0.1 (use <code>0.0.0.0</code> to access from other devices)</li>
-      <li><code>--open</code>: open the page in the browser on start</li>
-      <li><code>--index &lt;file&gt;</code>: file served by default for the root and directory requests (default: <code>index.html</code>; no flag + no index file &rarr; 404 at <code>/</code>)</li>
-      <li><code>--header</code>: additional HTTP header on every response (repeatable), e.g. <code>--header "Access-Control-Allow-Origin: *"</code></li>
+      <li>
+        <code>--release</code>: bundle, minify, hash filenames, to output dir (default: <code>dist</code>).
+      </li>
+      <li>
+        <code>--serve</code>: serve the output directory (default: <code>dist</code>) without watching or bundling.
+      </li>
+      <li>
+        <code>--src &lt;dir&gt;</code>: assets directory to watch and bundle (default: <code>src</code>).
+      </li>
+      <li>
+        <code>--dist &lt;dir&gt;</code>: output or serving directory (default to <code>dev/</code> or <code>dist/</code>
+        with <code>--release</code>/<code>--serve</code>).
+      </li>
+      <li>
+        <code>--port &lt;n&gt;</code> default 8080 (use <code>0</code> for a random free port).
+      </li>
+      <li>
+        <code>--ip &lt;addr&gt;</code> default 127.0.0.1 (use <code>0.0.0.0</code> to access from other devices).
+      </li>
+      <li>
+        <code>--open</code>: open the page in the browser on start.
+      </li>
+      <li>
+        <code>--index &lt;file&gt;</code>: file served by default for the root and directory requests (default:
+        <code>index.html</code>; no flag + no index file &rarr; 404 at <code>/</code>).
+      </li>
+      <li>
+        <code>--header</code>: additional HTTP header on every response (repeatable), e.g.
+        <code>--header "Access-Control-Allow-Origin: *"</code>.
+      </li>
     </ul>
 
     <h3>Examples</h3>
@@ -111,10 +152,24 @@ bundla --dist dist</code></pre>
     <h3>1. Serve only</h3>
     <pre><code>use bundla::{ServerConfig, serve};
 
+let config = ServerConfig {
+    dir: "dev".into(),
+    ip: IpAddr::from([127, 0, 0, 1]),
+    port: 8080,
+    headers: vec![],
+    index: "index.html".into(),
+};
+
 let server = serve(&amp;config).await?;
 server.run().await?;</code></pre>
-    <p><code>ServerConfig</code> and <code>Server</code> are re-exported from <a href="https://crates.io/crates/webadev">webadev</a>.</p>
-    <p>Use <code>0</code> as <code>config.port</code> to let the OS pick a free port (visible in <code>server.url</code>).</p>
+    <p>
+      <code>ServerConfig</code> and <code>Server</code> are re-exported from
+      <a href="https://crates.io/crates/webadev">webadev</a>.
+    </p>
+    <p>
+      Use <code>0</code> as <code>config.port</code> to let the OS pick a free port (visible in
+      <code>server.url</code>).
+    </p>
 
     <h3>2. Bundle</h3>
     <pre><code>use std::path::Path;
@@ -126,9 +181,16 @@ for warning in warnings {
     eprintln!("warning: {warning}");
 }</code></pre>
     <ul>
-      <li><code>BundlerOptions::DEV</code> (the default): unminified, with sourcemaps, no hashed filenames.</li>
-      <li><code>BundlerOptions::RELEASE</code>: minified, hashed filenames, no sourcemaps.</li>
-      <li><code>Ok</code> returns the non-fatal warnings collected during the build (skipped unreadable assets, skipped non-module scripts, bundler warnings); the library never prints &mdash; displaying them is up to you.</li>
+      <li>
+        <code>BundlerOptions::DEV</code> (the default): unminified, with sourcemaps, no hashed filenames.
+      </li>
+      <li>
+        <code>BundlerOptions::RELEASE</code>: minified, hashed filenames, no sourcemaps.
+      </li>
+      <li>
+        <code>Ok</code> returns the warnings collected during the build (unreadable assets, non-module scripts, bundler
+        warnings); displaying them is up to you.
+      </li>
     </ul>
     <p>Build a custom profile from the flags:</p>
     <pre><code>BundlerOptions {

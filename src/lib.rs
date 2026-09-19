@@ -1,8 +1,9 @@
-//! Bundle Html, Css, and Js with live-reload for development, or with
-//! minification and hashed filenames for release.
+//! Bundle HTML, CSS, and JS/TS:
+//! - development mode with live-reload,
+//! - release mode with minification and hashed filenames.
 //!
-//! See the [README](https://crates.io/crates/bundla) for features, CLI, and
-//! library usage.
+//! See the [README](https://crates.io/crates/bundla)
+//! for features, CLI, and library usage.
 
 #![warn(missing_docs)]
 
@@ -23,10 +24,10 @@ pub use webadev::Server;
 
 mod bundler;
 
-/// Bundle options for the html/css/js output.
+/// Bundle options for the HTML, CSS, JS/TS output.
 pub use bundler::Options as BundlerOptions;
 
-/// Bundle the html, css, and js assets from `src` into `dist`.
+/// Bundle the HTML, CSS, and JS/TS assets from `src` into `dist`.
 pub use bundler::bundle;
 
 mod server;

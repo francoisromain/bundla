@@ -8,39 +8,33 @@
   <br>
 </p>
 
-> Bundle Html, Css, and Js with live-reload for developpement, or with minification and hashed filenames for release.
+Bundle HTML, CSS, and JS/TS:
+- development mode with live-reload,
+- release mode with minification and hashed filenames.
 
-> Built with rust on the [webadev](https://crates.io/crates/webadev) library.
+Built with rust on the [webadev](https://crates.io/crates/webadev) library.
 
-## Features
+## Development mode (default)
 
-- bundle a static website Html, Css, and Js for developpement or release.
+- Watch `src` and re-bundle on every change.
+- Output to `dev` and serve.
+- Hot-reload after CSS edits, full page reload for HTML and JS/TS.
 
-### Developpement (default)
+## Release mode
 
-- watch `src`,
-- re-bundle on every change to `dev`,
-- serve `dev`,
-- hot-reload after CSS edits, full page reload for anything else.
-
-If a bundle fails, the browser stays on the previous one.
-
-### Release
-
-- bundle, minify, hash filenames from `src`
-- output to `dist`
-- option: serve the `dist` directory
-
-Atomic swap: the build renders into a temporary sibling of `dist` and swaps it in only on success, so a failed build never leaves a wiped or partial output.
+- Bundle, minify, hash filenames from `src`.
+- Output to `dist`.
+- Option: serve the `dist` directory.
 
 ## Conventions
 
-- every `.html` file under `src` is a page entry, mirrored to `dist`
-- `<link rel="stylesheet">` and `<script type="module">` references are bundled (one output per asset, cached across pages) and rewritten in place; `type="module"` is required for scripts
-- the source layout is mirrored in the output and `?query`/`#fragment` suffixes on references are preserved
-- relative css `url()` and css-to-css `@import` targets are bundled and rewritten; remote and absolute URLs are left for the browser to resolve
-- everything else under `src` is copied as-is (static assets)
-- `dist` must not overlap `src`
+- Every `.html` file under `src` is a page entry, mirrored to `dev`/`dist`.
+- `<link rel="stylesheet">` and `<script type="module">` references are bundled (one output per asset, cached across pages) and rewritten in place; `type="module"` is required for scripts.
+- The source layout is mirrored in the output and `?query`/`#fragment` suffixes on references are preserved.
+- Relative css `url()` and css-to-css `@import` targets are bundled and rewritten; remote and absolute URLs are left for the browser to resolve.
+- Everything else under `src` is copied as-is (static assets).
+- `dev`/`dist` must not overlap `src`.
+- The build renders into a temporary sibling of `dev`/`dist` and swaps it in only on success, so a failed build never leaves a partial output.
 
 ## CLI
 
@@ -53,15 +47,15 @@ bundla
 
 ### Options
 
-- `--release`: bundle, minify, hash filenames, to output dir (default: `dist`)
-- `--serve`: serve the output directory (default: `dist`) without watching or bundling
-- `--src <dir>`: assets directory to watch and bundle (default: `src`)
-- `--dist <dir>`: output or serving directory (default to `dev/` or `dist/` with `--release`/`--serve`)
-- `--port <n>` default 8080 (use `0` for a random free port)
-- `--ip <addr>` default 127.0.0.1 (use `0.0.0.0` to access from other devices)
-- `--open`: open the page in the browser on start
-- `--index <file>`: file served by default for the root and directory requests (default: `index.html`; no flag + no index file → 404 at `/`)
-- `--header`: additional HTTP header on every response (repeatable), e.g. `--header "Access-Control-Allow-Origin: *"`
+- `--release`: bundle, minify, hash filenames, to output dir (default: `dist`).
+- `--serve`: serve the output directory (default: `dist`) without watching or bundling.
+- `--src <dir>`: assets directory to watch and bundle (default: `src`).
+- `--dist <dir>`: output or serving directory (default to `dev/` or `dist/` with `--release`/`--serve`).
+- `--port <n>` default 8080 (use `0` for a random free port).
+- `--ip <addr>` default 127.0.0.1 (use `0.0.0.0` to access from other devices).
+- `--open`: open the page in the browser on start.
+- `--index <file>`: file served by default for the root and directory requests (default: `index.html`; no flag + no index file → 404 at `/`).
+- `--header`: additional HTTP header on every response (repeatable), e.g. `--header "Access-Control-Allow-Origin: *"`.
 
 ### Examples
 
@@ -90,6 +84,14 @@ bundla --dist dist
 ```rust
 use bundla::{ServerConfig, serve};
 
+let config = ServerConfig {
+    dir: "dev".into(),
+    ip: IpAddr::from([127, 0, 0, 1]),
+    port: 8080,
+    headers: vec![],
+    index: "index.html".into(),
+};
+
 let server = serve(&config).await?;
 server.run().await?;
 ```
@@ -111,9 +113,9 @@ for warning in warnings {
 }
 ```
 
-- `BundlerOptions::DEV` (the default): unminified, with sourcemaps, no hashed filenames.
+- `BundlerOptions::DEV` (default): unminified, with sourcemaps, no hashed filenames.
 - `BundlerOptions::RELEASE`: minified, hashed filenames, no sourcemaps.
-- `Ok` returns the non-fatal warnings collected during the build (skipped unreadable assets, skipped non-module scripts, bundler warnings); the library never prints — displaying them is up to you.
+- `Ok` returns the warnings collected during the build (unreadable assets, non-module scripts, bundler warnings); displaying them is up to you.
 
 Build a custom profile from the flags:
 
