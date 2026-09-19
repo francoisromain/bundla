@@ -126,7 +126,7 @@ async fn dev_bundle_mirrors_and_rewrites() {
     assert!(out_html.contains("./styles/main.css"));
     assert!(out_html.contains("./scripts/app.js"));
     assert!(dist.join("styles/main.css").is_file());
-    assert!(dist.join("styles/main.map").is_file());
+    assert!(dist.join("styles/main.css.map").is_file());
     assert!(dist.join("scripts/app.js").is_file());
     assert!(dist.join("scripts/app.js.map").is_file());
 }

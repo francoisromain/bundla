@@ -3,7 +3,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-// reject `dist` if equal to, inside, or containing `src`
+// Reject `dist` if equal to, inside, or containing `src`.
 pub fn dist_guard(src: &Path, dist: &Path) -> Result<(), String> {
     let resolved = dist_path_resolve(dist)?;
     if resolved == src {
@@ -32,7 +32,7 @@ pub fn dist_guard(src: &Path, dist: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// resolve a raw reference to a file under `src`
+// Resolve a raw reference to a file under `src`.
 pub fn asset_ref_path_resolve(
     src: &Path,
     page_path: &Path,
@@ -77,7 +77,7 @@ pub fn asset_ref_path_resolve(
     Ok(Some(ref_path_canonicalized))
 }
 
-// replace only the filename of a reference with the bundled output name,
+// Replace only the filename of a reference with the bundled output name,
 // keeping the relative directory prefix and any query/fragment
 // (`./scripts/main.js?v=2` → `./scripts/main-<hash>.js?v=2`).
 pub fn asset_ref_rewrite(asset_ref: &str, file_name: &str) -> String {
@@ -90,14 +90,14 @@ pub fn asset_ref_rewrite(asset_ref: &str, file_name: &str) -> String {
     format!("{asset_ref_rewritten}{asset_ref_suffix}")
 }
 
-// convert `path` to an absolute path
+// Convert `path` to an absolute path
 // - canonicalize the deepest existing ancestor (so symlinks and `..` are resolved)
 // - append the not-yet-existing path components
 fn dist_path_resolve(path: &Path) -> Result<PathBuf, String> {
     let path_resolved = match path.canonicalize() {
-        // dist path exists on disk
+        // Dist path exists on disk
         Ok(resolved) => resolved,
-        // dist path does not exist on disk
+        // Dist path does not exist on disk
         Err(_) => {
             let absolute = if path.is_absolute() {
                 path.to_path_buf()
@@ -107,7 +107,7 @@ fn dist_path_resolve(path: &Path) -> Result<PathBuf, String> {
                     .join(path)
             };
 
-            // an array of the yet-non-existing path components
+            // An array of the yet-non-existing path components
             let missing: Vec<std::ffi::OsString> = absolute
                 .ancestors()
                 .take_while(|p| !p.exists())
@@ -115,7 +115,7 @@ fn dist_path_resolve(path: &Path) -> Result<PathBuf, String> {
                 .map(|n| n.to_os_string())
                 .collect();
 
-            // the deepest existing path ancestor
+            // The deepest existing path ancestor
             let mut resolved = absolute
                 .ancestors()
                 .find(|p| p.exists())
@@ -127,7 +127,7 @@ fn dist_path_resolve(path: &Path) -> Result<PathBuf, String> {
                 resolved.push(part);
             }
 
-            // clean the path
+            // Clean the path
             path_normalize(&resolved)
         }
     };
@@ -135,7 +135,7 @@ fn dist_path_resolve(path: &Path) -> Result<PathBuf, String> {
     Ok(path_resolved)
 }
 
-// clean a path: resolve `.` and `..`
+// Clean a path: resolve `.` and `..`.
 fn path_normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
@@ -151,7 +151,7 @@ fn path_normalize(path: &Path) -> PathBuf {
     out
 }
 
-// check if the value is a remote or absolute references
+// Check if the value is a remote or absolute references.
 // `http:`, `//`, `data:`, `mailto:`, `/path`
 pub fn is_remote_or_absolute(value: &str) -> bool {
     if value.starts_with('/') {
@@ -165,7 +165,7 @@ pub fn is_remote_or_absolute(value: &str) -> bool {
     false
 }
 
-// split a url reference into its path and any `?query`/`#fragment` suffix
+// Split a url reference into its path and any `?query`/`#fragment` suffix.
 pub fn url_ref_split(url_ref: &str) -> (&str, &str) {
     match url_ref.find(['?', '#']) {
         Some(idx) => (&url_ref[..idx], &url_ref[idx..]),

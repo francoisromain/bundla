@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<svg viewBox="0 0 64 64" version="1.1" id="svg3" xmlns="http://www.w3.org/2000/svg">
-  <rect width="64" height="64" rx="14" fill="#f7a" id="rect1" style="fill:#00ff78;fill-opacity:1"/>
-  <g stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none" id="g3" transform="translate(0,1.017275)">
-    <path style="fill: none; stroke-width: 9; stroke-dasharray: none; transform-origin: 20px 30.9827px;" d="M 20 49.024 L 20 12.983" id="path4"/>
-    <path style="fill: none; stroke-width: 9; stroke-dasharray: none; transform-box: fill-box; transform-origin: 50% 50%;" id="path5" d="M 49.5 17.483 C 49.501 20.698 47.785 23.669 45.001 25.278 C 42.217 26.885 38.786 26.885 36.001 25.278 C 33.216 23.67 31.5 20.699 31.5 17.483" transform="matrix(0, -1, 1, 0, -0.000003, 0)"/>
-    <path style="fill: none; stroke-width: 9; stroke-dasharray: none; transform-box: fill-box; transform-origin: 50% 50%;" id="path5-6" d="M 49.5 35.483 C 49.501 38.698 47.785 41.669 45 43.277 C 42.216 44.885 38.786 44.885 36.001 43.278 C 33.215 41.67 31.5 38.699 31.5 35.483" transform="matrix(0, -1, 1, 0, 0, -0.000003)"/>
-    <path style="fill: none; stroke-width: 9; stroke-dasharray: none; transform-origin: 28.009px 12.938px;" d="M 28.009 20.947 L 28.009 4.947" id="path-1" transform="matrix(0, 1, -1, 0, -0.000001, 0.000002)"/>
-    <path style="fill: none; stroke-width: 9; stroke-dasharray: none; transform-origin: 28.009px 30.983px;" d="M 28.009 38.992 L 28.009 22.992" id="path-2" transform="matrix(0, 1, -1, 0, -0.000003, 0)"/>
-    <path style="fill: none; stroke-width: 9; stroke-dasharray: none; transform-origin: 28.009px 49.005px;" d="M 28.009 57.014 L 28.009 41.014" id="path-3" transform="matrix(0, 1, -1, 0, -0.000003, 0)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0f9"/>
+  <g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 20 50 L 20 14"/>
+    <path d="M 36 14 A 9 9 0 0 1 36 32"/>
+    <path d="M 36 32 A 9 9 0 0 1 36 50"/>
+    <path d="M 20 14 L 36 14"/>
+    <path d="M 20 32 L 36 32"/>
+    <path d="M 20 50 L 36 50"/>
   </g>
 </svg>

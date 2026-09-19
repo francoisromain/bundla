@@ -12,10 +12,8 @@ use super::Options;
 use css::css_bundle;
 use js::js_bundle;
 
-/// bundled css extensions, lowercased
 pub const CSS_EXTENSIONS: [&str; 1] = ["css"];
 
-/// bundled js extensions, lowercased
 pub const JS_EXTENSIONS: [&str; 6] = ["js", "mjs", "cjs", "ts", "mts", "cts"];
 
 pub async fn asset_process(
@@ -63,7 +61,7 @@ pub async fn asset_process(
     Ok(file_name)
 }
 
-// the source file stem, falling back to a fixed name for unusual names
+// The source file stem, falling back to a fixed name for unusual names.
 fn file_stem_extract(source: &Path, fallback: &str) -> String {
     source
         .file_stem()
@@ -72,7 +70,7 @@ fn file_stem_extract(source: &Path, fallback: &str) -> String {
         .to_string()
 }
 
-// output directory for a relative `dir` under `dist`, created on the fly
+// Output directory for a relative `dir` under `dist`, created on the fly.
 fn dist_mkdir(dist: &Path, dir: &Path) -> Result<PathBuf, String> {
     let out = if dir.as_os_str().is_empty() {
         dist.to_path_buf()
@@ -85,15 +83,15 @@ fn dist_mkdir(dist: &Path, dir: &Path) -> Result<PathBuf, String> {
 }
 
 // `name` with an optional content hash, preserving the source directory
-fn file_name_output_format(stem: &str, ext: &str, bytes: &[u8], options: Options) -> String {
-    if options.hash {
+fn file_name_output_format(stem: &str, ext: &str, bytes: &[u8], hash: bool) -> String {
+    if hash {
         format!("{stem}-{}.{ext}", hash_create(bytes))
     } else {
         format!("{stem}.{ext}")
     }
 }
 
-// std-only FNV-1a 64-bit hash, formatted as 16 hex chars
+// Std-only FNV-1a 64-bit hash, formatted as 16 hex chars.
 fn hash_create(bytes: &[u8]) -> String {
     let mut hash: u64 = 0xcbf29ce484222325;
     for &byte in bytes {
@@ -126,26 +124,14 @@ mod tests {
 
     #[test]
     fn file_name_output_format_with_hash() {
-        let options = Options {
-            minify: false,
-            sourcemap: false,
-            hash: true,
-        };
-
-        let name = file_name_output_format("main", "js", b"body", options);
+        let name = file_name_output_format("main", "js", b"body", true);
         assert_eq!(name, format!("main-{}.js", hash_create(b"body")));
     }
 
     #[test]
     fn file_name_output_format_without_hash() {
-        let options = Options {
-            minify: false,
-            sourcemap: false,
-            hash: false,
-        };
-
         assert_eq!(
-            file_name_output_format("main", "css", b"body", options),
+            file_name_output_format("main", "css", b"body", false),
             "main.css"
         );
     }
@@ -206,7 +192,7 @@ mod tests {
         .unwrap();
         assert_eq!(name, "THEME.css");
         assert!(dist.join("THEME.css").is_file());
-        assert!(dist.join("THEME.map").is_file());
+        assert!(dist.join("THEME.css.map").is_file());
     }
 
     #[tokio::test]
@@ -230,7 +216,7 @@ mod tests {
         .unwrap();
         assert_eq!(name, "theme.css");
         assert!(dist.join("styles/theme.css").is_file());
-        assert!(dist.join("styles/theme.map").is_file());
+        assert!(dist.join("styles/theme.css.map").is_file());
     }
 
     #[tokio::test]
@@ -278,7 +264,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn js_hash_sourcemap_combo_emits_entry_and_map() {
+    async fn js_hash_sourcemap_pair_maps_entry_and_map() {
         let dir = tempdir().unwrap();
         let src = fs::canonicalize(dir.path()).unwrap();
         let dist = src.join("out");
@@ -303,17 +289,32 @@ mod tests {
         .unwrap();
 
         let dist_dir = dist.join("scripts");
+        assert!(name.starts_with("app-") && name.ends_with(".js"), "{name}");
         assert!(dist_dir.join(&name).is_file(), "missing {}", name);
-        let maps: Vec<String> = fs::read_dir(&dist_dir)
+        let map_name = format!("{name}.map");
+        assert!(
+            dist_dir.join(&map_name).is_file(),
+            "missing paired sourcemap {}",
+            map_name
+        );
+        let code = fs::read_to_string(dist_dir.join(&name)).unwrap();
+        assert!(
+            code.trim_end()
+                .ends_with(&format!("//# sourceMappingURL={map_name}")),
+            "entry must end with a patched sourceMappingURL comment, got: {code:?}"
+        );
+        let names: Vec<String> = fs::read_dir(&dist_dir)
             .unwrap()
             .filter_map(Result::ok)
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n.ends_with(".map"))
             .collect();
         assert!(
-            !maps.is_empty(),
-            "expected a sourcemap in {}",
-            dist_dir.display()
+            !names.contains(&"app.js".to_string()),
+            "unhashed entry must not remain: {names:?}"
+        );
+        assert!(
+            !names.contains(&"app.js.map".to_string()),
+            "unpaired map must not remain: {names:?}"
         );
     }
 }

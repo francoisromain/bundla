@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 description = "Bundle Html, Css, and Js with live-reload for dev, or with minification, hashed filenames for release"
 license = "MIT"
+readme = "README.md"
 repository = "https://github.com/francoisromain/bundla"
 homepage = "https://github.com/francoisromain/bundla"
+documentation = "https://docs.rs/bundla"
 rust-version = "1.88"
 keywords = ["bundle", "live-reload", "web", "development", "watch"]
 categories = ["development-tools"]
@@ -24,4 +26,8 @@ tokio = { version = "1", features = ["full"] }
 webadev = "0.6"
 
 [dev-dependencies]
+reqwest = "0.13"
 tempfile = "3"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["-D", "rustdoc::broken_intra_doc_links"]

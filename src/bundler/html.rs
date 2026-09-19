@@ -6,8 +6,8 @@ use std::{
 
 use lol_html::{RewriteStrSettings, element, html_content::Element, rewrite_str};
 
-// collect `<link rel="stylesheet">` hrefs and `<script type="module">` srcs, in document order
-// non-module scripts are skipped and reported as warnings
+// Collect `<link rel="stylesheet">` hrefs and `<script type="module">` srcs, in document order.
+// Non-module scripts are skipped and reported as warnings.
 pub fn html_asset_refs_extract(
     html: &str,
     page: &Path,
@@ -68,8 +68,8 @@ fn skip_script_warn_message(src: &str, page: &Path) -> String {
     )
 }
 
-// rewrite the discovered references to their bundled output
-// deduping duplicate references within the page to one
+// Rewrite the discovered references to their bundled output.
+// Dedupe duplicate references within the page to one.
 pub fn html_rewrite(html: &str, map: &HashMap<String, String>) -> Result<String, String> {
     if map.is_empty() {
         return Ok(html.to_string());
@@ -111,7 +111,7 @@ pub fn html_rewrite(html: &str, map: &HashMap<String, String>) -> Result<String,
     rewrite_str(html, settings).map_err(|err| format!("html rewrite error: {err}"))
 }
 
-// minify an html document with minify-html, keeping closing tags and
+// Minify an html document with minify-html, keeping closing tags and
 // structural (`<html>`, `<head>`) opening tags so the output stays readable
 pub fn html_minify(html: &str) -> Result<String, String> {
     let mut cfg = minify_html::Cfg::new();

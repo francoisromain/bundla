@@ -16,25 +16,42 @@ use html::{html_asset_refs_extract, html_minify, html_rewrite};
 use path::{asset_ref_path_resolve, asset_ref_rewrite, dist_guard};
 use static_assets::static_asset_copy;
 
-/// bundle options for css/js/html output.
+/// Bundle options for css/js/html output.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Options {
+    /// Minify the css, js, and output html.
     pub minify: bool,
-    /// emit `.map` sourcemap files next to the output
+    /// Emit `.map` sourcemap files next to the output.
     pub sourcemap: bool,
-    /// add a hash to output filenames (`main-<hash>.css`, `main-<hash>.js`)
+    /// Add a hash to output filenames (`main-<hash>.css`, `main-<hash>.js`).
     pub hash: bool,
 }
 
 impl Options {
-    /// unminified, sourcemapped, no-hash filenames
+    /// Unminified, sourcemapped, no-hash filenames.
+    ///
+    /// ```
+    /// use bundla::BundlerOptions;
+    ///
+    /// assert!(!BundlerOptions::DEV.minify);
+    /// assert!(BundlerOptions::DEV.sourcemap);
+    /// assert!(!BundlerOptions::DEV.hash);
+    /// ```
     pub const DEV: Options = Options {
         minify: false,
         sourcemap: true,
         hash: false,
     };
 
-    /// minified, hashed filenames, no sourcemaps
+    /// Minified, hashed filenames, no sourcemaps.
+    ///
+    /// ```
+    /// use bundla::BundlerOptions;
+    ///
+    /// assert!(BundlerOptions::RELEASE.minify);
+    /// assert!(!BundlerOptions::RELEASE.sourcemap);
+    /// assert!(BundlerOptions::RELEASE.hash);
+    /// ```
     pub const RELEASE: Options = Options {
         minify: true,
         sourcemap: false,
@@ -42,9 +59,9 @@ impl Options {
     };
 }
 
-/// bundle the html/css/js assets from `src` into `dist`.
+/// Bundle the html/css/js assets from `src` into `dist`.
 ///
-/// every `.html` file under `src` is a page entry, mirrored to `dist`.
+/// Every `.html` file under `src` is a page entry, mirrored to `dist`.
 /// `<link rel="stylesheet">` and `<script type="module">` references are
 /// bundled (one output per asset, cached by source path) and rewritten in
 /// place. `dist` is replaced atomically: the build renders into a temp
@@ -53,6 +70,42 @@ impl Options {
 /// `Ok` returns the non-fatal warnings collected during the build (skipped
 /// unreadable assets, skipped non-module scripts, bundler warnings), so the
 /// caller decides how to display them.
+///
+/// # Examples
+///
+/// ```
+/// use std::fs;
+/// use std::path::Path;
+///
+/// use bundla::{BundlerOptions, bundle};
+/// use tempfile::tempdir;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let dir = tempdir().unwrap();
+///     let src = dir.path().join("src");
+///     let dist = dir.path().join("dist");
+///     fs::create_dir_all(src.join("styles")).unwrap();
+///     fs::create_dir_all(src.join("scripts")).unwrap();
+///     fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+///     fs::write(src.join("scripts/app.js"), "console.log('app');\n").unwrap();
+///     fs::write(
+///         src.join("index.html"),
+///         "<html><head>\
+///          <link rel=\"stylesheet\" href=\"./styles/main.css\">\
+///          <script type=\"module\" src=\"./scripts/app.js\"></script>\
+///          </head><body><p>hello</p></body></html>",
+///     )
+///     .unwrap();
+///
+///     let warnings = bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+///     assert!(warnings.is_empty(), "got: {warnings:?}");
+///
+///     let html = fs::read_to_string(dist.join("index.html")).unwrap();
+///     assert!(html.contains("main-"), "expected a hashed css name: {html}");
+///     assert!(html.contains("app-"), "expected a hashed js name: {html}");
+/// }
+/// ```
 pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<Vec<String>, String> {
     if !src.is_dir() {
         return Err(format!("source directory not found: {}", src.display()));
@@ -118,7 +171,7 @@ async fn page_list_bundle(
     fs::create_dir_all(dist)
         .map_err(|err| format!("failed to create {}: {err}", dist.display()))?;
 
-    // store the refs to the processed files for reuse in subsequent page
+    // Store the refs to the processed files for reuse in subsequent page
     let mut cache: HashMap<PathBuf, String> = HashMap::new();
 
     for page_path in page_path_list {
@@ -128,7 +181,7 @@ async fn page_list_bundle(
     Ok(())
 }
 
-// find every `.html` file under `dir`, recursively
+// Find every `.html` file under `dir`, recursively.
 fn page_path_list_build(dir: &Path) -> Vec<PathBuf> {
     let mut pages: Vec<PathBuf> = WalkDir::new(dir)
         .into_iter()
@@ -144,10 +197,10 @@ fn page_path_list_build(dir: &Path) -> Vec<PathBuf> {
     pages
 }
 
-// extract refs to the assets inside the page
-// if the asset is not in cache yet, process it, and store its ref in cache
-// otherwise, reuse the ref to the asset in cache
-// rewrite the html with refs to the processed assets
+// Extract refs to the assets inside the page.
+// If the asset is not in cache yet, process it, and store its ref in cache.
+// Otherwise, reuse the ref to the asset in cache.
+// Rewrite the html with refs to the processed assets.
 async fn page_bundle(
     page_path: &Path,
     src: &Path,

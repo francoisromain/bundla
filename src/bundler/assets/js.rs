@@ -41,13 +41,19 @@ pub async fn js_bundle(
     }
 
     let dist_dir = dist_mkdir(dist, dir)?;
-    // rolldown guarantees asset sorting: entry chunks first,
-    // then secondary chunks, then assets (sourcemaps)
+    // Rolldown guarantees asset sorting:
+    // - entry chunks first,
+    // - then secondary chunks,
+    // - then assets (sourcemaps)
     // (see `finalize_assets` in rolldown's `stages/generate_stage`)
     // So the first non-`.map` asset below is the entry chunk,
     // and renaming only it keeps the entry's output name predictable.
     // secondary chunks keep their rolldown-generated `[name]-[hash].js` names.
+    // With hashed filenames the entry's sourcemap is renamed to match
+    // (`<final_name>.map`) and the trailing `sourceMappingURL` comment is
+    // patched to the new name, keeping the map paired with the hashed entry.
     let mut js_name = None;
+    let mut entry_orig = None;
     for item in &output.assets {
         let name = item.filename();
         if name.ends_with(".map") {
@@ -55,14 +61,46 @@ pub async fn js_bundle(
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or(name);
+            // In hashed mode only the entry's own map is renamed to match the
+            // entry; secondary chunk maps keep their rolldown names and their
+            // chunks' `sourceMappingURL` comments stay valid untouched.
+            let is_entry_map = options.hash
+                && js_name.is_some()
+                && entry_orig
+                    .as_deref()
+                    .is_some_and(|orig| map_name == format!("{orig}.map"));
+            if is_entry_map {
+                fs::write(
+                    dist_dir.join(format!("{}.map", js_name.as_deref().unwrap())),
+                    item.content_as_bytes(),
+                )
+                .map_err(|err| format!("js sourcemap write error: {err}"))?;
+                continue;
+            }
             fs::write(dist_dir.join(map_name), item.content_as_bytes())
                 .map_err(|err| format!("js sourcemap write error: {err}"))?;
+
             continue;
         }
-        let final_name = file_name_output_format(&stem, "js", item.content_as_bytes(), options);
+
+        let final_name =
+            file_name_output_format(&stem, "js", item.content_as_bytes(), options.hash);
         if js_name.is_none() {
-            fs::write(dist_dir.join(&final_name), item.content_as_bytes())
+            let bytes = if options.sourcemap {
+                let map_name = format!("{name}.map");
+                let final_map = format!("{final_name}.map");
+                sourcemap_comment_rewrite(
+                    &String::from_utf8_lossy(item.content_as_bytes()),
+                    &map_name,
+                    &final_map,
+                )
+                .into_bytes()
+            } else {
+                item.content_as_bytes().to_vec()
+            };
+            fs::write(dist_dir.join(&final_name), bytes)
                 .map_err(|err| format!("js output write error: {err}"))?;
+            entry_orig = Some(name.to_string());
             js_name = Some(final_name);
         } else {
             fs::write(dist_dir.join(name), item.content_as_bytes())
@@ -73,6 +111,23 @@ pub async fn js_bundle(
     js_name.ok_or_else(|| format!("no js output for {}", source.display()))
 }
 
+// Rewrite the last trailing `sourceMappingURL={from}` comment to
+// `sourceMappingURL={to}`, so a hashed entry keeps pointing at its map
+// after the map is renamed to match. no-op when `from` is absent or equal.
+fn sourcemap_comment_rewrite(text: &str, from: &str, to: &str) -> String {
+    if from == to {
+        return text.to_string();
+    }
+    let needle = format!("sourceMappingURL={from}");
+    let Some(pos) = text.rfind(&needle) else {
+        return text.to_string();
+    };
+    let mut out = text[..pos].to_string();
+    out.push_str(&format!("sourceMappingURL={to}"));
+    out.push_str(&text[pos + needle.len()..]);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -80,6 +135,38 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn sourcemap_comment_rewrite_replaces_last_occurrence() {
+        let text = "export{}\n//# sourceMappingURL=app.js.map";
+        let out = sourcemap_comment_rewrite(text, "app.js.map", "app-deadbeef.js.map");
+        assert_eq!(out, "export{}\n//# sourceMappingURL=app-deadbeef.js.map");
+    }
+
+    #[test]
+    fn sourcemap_comment_rewrite_keeps_earlier_occurrences() {
+        let text = "//# sourceMappingURL=app.js.map\nfoo()\n//# sourceMappingURL=app.js.map";
+        assert_eq!(
+            sourcemap_comment_rewrite(text, "app.js.map", "app-x.js.map"),
+            "//# sourceMappingURL=app.js.map\nfoo()\n//# sourceMappingURL=app-x.js.map"
+        );
+    }
+
+    #[test]
+    fn sourcemap_comment_rewrite_noop_when_equal_or_absent() {
+        assert_eq!(
+            sourcemap_comment_rewrite(
+                "a\n//# sourceMappingURL=app.js.map",
+                "app.js.map",
+                "app.js.map"
+            ),
+            "a\n//# sourceMappingURL=app.js.map"
+        );
+        assert_eq!(
+            sourcemap_comment_rewrite("console.log(1);", "app.js.map", "app-x.js.map"),
+            "console.log(1);"
+        );
+    }
 
     fn write_js(source: &std::path::Path, content: &str) {
         fs::create_dir_all(source.parent().unwrap()).unwrap();

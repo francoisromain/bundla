@@ -13,39 +13,39 @@ use bundla::{BundlerOptions, DevLog, Server, ServerConfig, bundle, dev, serve};
     version
 )]
 struct Args {
-    /// assets directory to watch and bundle
+    /// Assets directory to watch and bundle.
     #[arg(long, default_value = "src")]
     src: PathBuf,
 
-    /// output or serving directory (default: dev/, or dist/ with --release or --serve)
+    /// Output or serving directory (default: dev/, or dist/ with --release or --serve).
     #[arg(long)]
     dist: Option<PathBuf>,
 
-    /// release build: minify, hash filenames, then exit (or serve with --serve)
+    /// Release build: minify, hash filenames, then exit (or serve with --serve).
     #[arg(short, long)]
     release: bool,
 
-    /// serve an output directory without rebundling (after --release: serve the fresh build)
+    /// Serve an output directory without rebundling (after --release: serve the fresh build).
     #[arg(long)]
     serve: bool,
 
-    /// port to listen on
+    /// Port to listen on.
     #[arg(short, long, default_value = "8080")]
     port: u16,
 
-    /// ip address to bind to
+    /// IP address to bind to.
     #[arg(short, long, default_value = "127.0.0.1")]
     ip: IpAddr,
 
-    /// open the page in the browser on start
+    /// Open the page in the browser on start.
     #[arg(short, long)]
     open: bool,
 
-    /// file served by default for the root and directory requests
+    /// File served by default for the root and directory requests.
     #[arg(long, default_value = "index.html")]
     index: String,
 
-    /// additional HTTP header on every response (repeatable)
+    /// Additional HTTP header on every response (repeatable).
     #[arg(long = "header", value_name = "NAME: VALUE")]
     headers: Vec<String>,
 }

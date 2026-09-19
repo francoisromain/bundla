@@ -25,7 +25,7 @@ pub fn css_bundle(
     css_bundle_rec(asset_path, src, dist, dir, options, cache, &mut stack)
 }
 
-// the stack carries the in-progress sources so that a cycle in the `@import`
+// The stack carries the in-progress sources so that a cycle in the `@import`
 // graph is detected instead of recursing forever
 fn css_bundle_rec(
     asset_path: &Path,
@@ -74,28 +74,30 @@ fn css_bundle_rec(
         .map_err(|err| format!("css print error: {err}"))?;
 
     let mut code = result.code;
+
+    let name = file_name_output_format(&file_stem, "css", code.as_bytes(), options.hash);
     let out = dist_mkdir(dist, dir)?;
     if options.sourcemap {
         let map_json = map
             .to_json(None)
             .map_err(|err| format!("css sourcemap serialization error: {err}"))?;
-        let map_name = format!("{file_stem}.map");
+        // The map shares the output name (`theme.css.map`, or `theme-<hash>.css.map`)
+        let map_name = format!("{name}.map");
         fs::write(out.join(&map_name), map_json)
             .map_err(|err| format!("css sourcemap write error: {err}"))?;
         code.push_str(&format!("\n/*# sourceMappingURL={map_name} */"));
     }
 
-    let name = file_name_output_format(&file_stem, "css", code.as_bytes(), options);
     fs::write(out.join(&name), code).map_err(|err| format!("css output write error: {err}"))?;
     Ok(name)
 }
 
-// bundle every relative `@import` target and rewrite the rule's url to its
-// output name; remotes and absolute-rooted refs are left untouched for the
-// browser to resolve, and missing local targets are hard errors. import
-// targets are always content-hashed, dev included, so editing an imported
-// file yields a new url and the browser re-fetches it instead of serving a
-// cached copy of the parent css.
+// - bundle every relative `@import` target and rewrite url to its output name
+// - remotes and absolute-rooted refs are left untouched
+// - missing local targets are hard errors
+// - @import targets are always content-hashed, dev included,
+// So editing an imported file yields a new url and the browser re-fetches it
+// instead of serving a cached copy of the parent css.
 fn css_imports_rewrite(
     stylesheet: &mut StyleSheet,
     asset_path: &Path,
@@ -244,10 +246,44 @@ mod tests {
         assert_eq!(name, "theme.css");
         let code = fs::read_to_string(dist.join("styles/theme.css")).unwrap();
         assert!(
-            code.ends_with("/*# sourceMappingURL=theme.map */"),
+            code.ends_with("/*# sourceMappingURL=theme.css.map */"),
             "got: {code}"
         );
-        assert!(dist.join("styles/theme.map").is_file());
+        assert!(dist.join("styles/theme.css.map").is_file());
+    }
+
+    #[test]
+    fn css_hash_sourcemap_pair_maps_output() {
+        let dir = tempdir().unwrap();
+        let src = fs::canonicalize(dir.path()).unwrap();
+        let source = src.join("styles/theme.css");
+        write_css(&source, "body { color: red; }\n");
+        let dist = src.join("out");
+        let options = Options {
+            minify: true,
+            sourcemap: true,
+            hash: true,
+        };
+
+        let name = bundle_css(&source, &src, &dist, Path::new("styles"), options).unwrap();
+        assert!(
+            name.starts_with("theme-") && name.ends_with(".css"),
+            "got: {name}"
+        );
+        let map_name = format!("{name}.map");
+        assert!(
+            dist.join("styles").join(&map_name).is_file(),
+            "missing paired sourcemap {map_name}"
+        );
+        let code = fs::read_to_string(dist.join("styles").join(&name)).unwrap();
+        assert!(
+            code.ends_with(&format!("/*# sourceMappingURL={map_name} */")),
+            "css must end with a patched sourceMappingURL comment, got: {code:?}"
+        );
+        assert!(
+            !dist.join("styles/theme.map").exists(),
+            "unpaired theme.map must not remain"
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ use walkdir::WalkDir;
 
 use super::assets::{CSS_EXTENSIONS, JS_EXTENSIONS};
 
-// mirror every non-`.html` file under `src` that is not a bundled asset,
+// Mirror every non-`.html` file under `src` that is not a bundled asset,
 // preserving the relative layout. dotted files and dotted directories are
 // skipped. unreadable source entries are skipped, reported as warnings; a
 // failure to write into `dist` is a hard error.
@@ -69,7 +69,7 @@ pub fn static_asset_copy(
             }
         }
         if let Err(err) = fs::copy(path, &out) {
-            // a stat-able source can still be unreadable (e.g. mode 000),
+            // A stat-able source can still be unreadable (e.g. mode 000),
             // so probe readability before blaming the destination
             if fs::read(path).is_err() {
                 warnings.push(format!(
