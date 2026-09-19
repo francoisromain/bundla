@@ -1,15 +1,206 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rust Dev Server</title>
-    <link rel="stylesheet" href="./styles/styles.css" />
-  </head>
-  <body>
-  Ola
-    <div id="root"></div>
 
-    <script type="module" src="./scripts/scripts.js"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bundla — bundle html, css, and js with live-reload</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/bundla.svg" />
+  <link rel="stylesheet" href="./styles/styles.css" />
+</head>
+
+<body>
+  <header>
+    <h1 id="top">Bundla</h1>
+
+    <p align="center">
+      <br>
+      <a href="https://github.com/francoisromain/bundla">
+        <img src="./assets/bundla.svg" alt="Bundla logo" width="160">
+      </a>
+      <br>
+    </p>
+
+    <p>Bundle Html, Css, and Js with live-reload for development, or with minification and hashed filenames for release.</p>
+    <p>Built with rust on the <a href="https://crates.io/crates/webadev">webadev</a> library.</p>
+    <nav>
+      <ul>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#conventions">Conventions</a></li>
+        <li><a href="#cli">CLI</a></li>
+        <li><a href="#library">Library</a></li>
+        <li><a href="#local-installation">Local installation</a></li>
+        <li><a href="#version-history">Version history</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <h2 id="features">Features</h2>
+    <ul>
+      <li>Bundle a static website Html, Css, and Js for development or release.</li>
+    </ul>
+
+    <h3>Developpement (default)</h3>
+    <ul>
+      <li>Watch <code>src</code>,</li>
+      <li>re-bundle on every change to <code>dev</code>,</li>
+      <li>serve <code>dev</code>,</li>
+      <li>hot-reload after CSS edits, full page reload for anything else.</li>
+    </ul>
+    <p>If a bundle fails, the browser stays on the previous one.</p>
+
+    <h3>Release</h3>
+    <ul>
+      <li>Bundle, minify, hash filenames from <code>src</code></li>
+      <li>output to <code>dist</code></li>
+      <li>option: serve the <code>dist</code> directory</li>
+    </ul>
+    <p>Atomic swap: the build renders into a temporary sibling of <code>dist</code> and swaps it in only on success, so a failed build never leaves a wiped or partial output.</p>
+
+    <h2 id="conventions">Conventions</h2>
+    <ul>
+      <li>every <code>.html</code> file under <code>src</code> is a page entry, mirrored to <code>dist</code></li>
+      <li><code>&lt;link rel="stylesheet"&gt;</code> and <code>&lt;script type="module"&gt;</code> references are bundled (one output per asset, cached across pages) and rewritten in place; <code>type="module"</code> is required for scripts</li>
+      <li>the source layout is mirrored in the output and <code>?query</code>/<code>#fragment</code> suffixes on references are preserved</li>
+      <li>relative css <code>url()</code> and css-to-css <code>@import</code> targets are bundled and rewritten; remote and absolute URLs are left for the browser to resolve</li>
+      <li>everything else under <code>src</code> is copied as-is (static assets)</li>
+      <li><code>dist</code> must not overlap <code>src</code></li>
+    </ul>
+
+    <h2 id="cli">CLI</h2>
+
+    <h3>Install and run</h3>
+    <pre><code>cargo install bundla
+
+# bundle src/, serve dev/
+bundla</code></pre>
+
+    <h3>Options</h3>
+    <ul>
+      <li><code>--release</code>: bundle, minify, hash filenames, to output dir (default: <code>dist</code>)</li>
+      <li><code>--serve</code>: serve the output directory (default: <code>dist</code>) without watching or bundling</li>
+      <li><code>--src &lt;dir&gt;</code>: assets directory to watch and bundle (default: <code>src</code>)</li>
+      <li><code>--dist &lt;dir&gt;</code>: output or serving directory (default to <code>dev/</code> or <code>dist/</code> with <code>--release</code>/<code>--serve</code>)</li>
+      <li><code>--port &lt;n&gt;</code> default 8080 (use <code>0</code> for a random free port)</li>
+      <li><code>--ip &lt;addr&gt;</code> default 127.0.0.1 (use <code>0.0.0.0</code> to access from other devices)</li>
+      <li><code>--open</code>: open the page in the browser on start</li>
+      <li><code>--index &lt;file&gt;</code>: file served by default for the root and directory requests (default: <code>index.html</code>; no flag + no index file &rarr; 404 at <code>/</code>)</li>
+      <li><code>--header</code>: additional HTTP header on every response (repeatable), e.g. <code>--header "Access-Control-Allow-Origin: *"</code></li>
+    </ul>
+
+    <h3>Examples</h3>
+    <pre><code># dev server (watch src/ &rarr; bundle &rarr; serve dev/ with live reload
+bundla
+bundla --port 9000 --open
+
+# release build of src/ to dist/
+bundla --release
+
+# serve an existing dist/ without bundling
+bundla --serve
+
+# release build, then serve it
+bundla --release --serve
+
+# bundle and serve dist/ in dev mode
+bundla --dist dist</code></pre>
+
+    <h2 id="library">Library</h2>
+
+    <h3>1. Serve only</h3>
+    <pre><code>use bundla::{ServerConfig, serve};
+
+let server = serve(&amp;config).await?;
+server.run().await?;</code></pre>
+    <p><code>ServerConfig</code> and <code>Server</code> are re-exported from <a href="https://crates.io/crates/webadev">webadev</a>.</p>
+    <p>Use <code>0</code> as <code>config.port</code> to let the OS pick a free port (visible in <code>server.url</code>).</p>
+
+    <h3>2. Bundle</h3>
+    <pre><code>use std::path::Path;
+
+use bundla::{BundlerOptions, bundle};
+
+let warnings = bundle(Path::new("src"), Path::new("dist"), BundlerOptions::RELEASE).await?;
+for warning in warnings {
+    eprintln!("warning: {warning}");
+}</code></pre>
+    <ul>
+      <li><code>BundlerOptions::DEV</code> (the default): unminified, with sourcemaps, no hashed filenames.</li>
+      <li><code>BundlerOptions::RELEASE</code>: minified, hashed filenames, no sourcemaps.</li>
+      <li><code>Ok</code> returns the non-fatal warnings collected during the build (skipped unreadable assets, skipped non-module scripts, bundler warnings); the library never prints &mdash; displaying them is up to you.</li>
+    </ul>
+    <p>Build a custom profile from the flags:</p>
+    <pre><code>BundlerOptions {
+    minify: true,
+    sourcemap: true,
+    hash: false,
+}</code></pre>
+
+    <h3>3. Dev server with live reload</h3>
+    <pre><code>use std::net::IpAddr;
+use std::path::Path;
+
+use bundla::{DevLog, ServerConfig, dev};
+use tokio::sync::broadcast;
+
+let config = ServerConfig {
+    dir: "dev".into(),
+    ip: IpAddr::from([127, 0, 0, 1]),
+    port: 8080,
+    headers: vec![],
+    index: "index.html".into(),
+};
+
+// runtime logs are reported on your broadcast channel:
+// - `DevLog::Change(ReloadType, Vec&lt;PathBuf&gt;)`: source changes from the watcher
+// - `DevLog::Warn(String)`: bundle warnings
+// - `DevLog::Error(String)`: rebundle failures during watch (previous bundle is kept)
+let (tx_log, mut rx_log) = broadcast::channel(100);
+let server = dev(Path::new("src"), &amp;config, tx_log).await?; // bundles, watches, serves
+println!("Starting development server at {}", server.url);
+
+tokio::spawn(async move {
+    while let Ok(log) = rx_log.recv().await {
+        eprintln!("log: {log:?}");
+    }
+});
+
+server.run().await?; // blocks until shutdown</code></pre>
+
+    <h2 id="local-installation">Local installation</h2>
+    <pre><code># clone the repo
+git clone https://github.com/francoisromain/bundla.git
+cd bundla
+
+# build the project
+cargo build --release
+
+# in the client directory, bundle src/, serve dev/
+cd client &amp;&amp; ./target/release/bundla --header "Access-Control-Allow-Origin: *"
+
+# install globally from the local package
+# compiles and copies the binary to `~/.cargo/bin/bundla`
+cargo install --path . --locked
+
+# use from anywhere
+# from the current directory, bundle src/, serve dev/ on 127.0.0.1:8080
+cd ~/some/project
+bundla
+
+# update later after source changes
+cargo install --path . --locked --force</code></pre>
+
+    <h2 id="version-history">Version history</h2>
+    <button id="load-commits" type="button">Load commits</button>
+    <ul id="commit-list"></ul>
+  </main>
+
+  <footer>
+    <p>&copy; 2026</p>
+  </footer>
+
+  <script type="module" src="./scripts/scripts.js"></script>
+</body>
+
 </html>

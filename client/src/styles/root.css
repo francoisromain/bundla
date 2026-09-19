@@ -1,0 +1,14 @@
+:root {
+    --bg-color: #121212;
+    --text-color: #e0e0e0;
+    --accent: #64ffda;
+    --heading-color: #ffb74d;
+    --btn-bg: #1f1f1f;
+    --btn-hover: #333;
+    --code-bg: #1a1a1a;
+    --border: #2a2a2a;
+    --muted: #909090;
+    --font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --max-width: 760px;
+}

@@ -1,40 +1,93 @@
-:root {
-  --bg-color: #121212;
-  --text-color: #e0e0e0;
-  --accent: #64ffda;
-  --btn-bg: #1f1f1f;
-  --btn-hover: #333;
-  --font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@import "./root.css";
+@import "./reset.css";
 
 body {
   background-color: var(--bg-color);
   color: var(--text-color);
   font-family: var(--font-family);
   line-height: 1.6;
-  padding: 2rem;
+  padding: 2rem 1.5rem 3rem;
 }
 
 .container {
-  max-width: 720px;
+  max-width: var(--max-width);
   margin: auto;
+}
+
+header {
+  padding: 1rem 0 1.5rem;
+  border-bottom: 1px solid var(--border);
 }
 
 header h1 {
   font-size: 2rem;
   color: var(--accent);
   margin-bottom: 0.5rem;
+  text-align: center;
 }
 
 .subtext {
   font-size: 1rem;
   margin-bottom: 2rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+header>p {
+  color: var(--muted);
+  margin-top: 0.25rem;
+  text-align: center;
+}
+
+nav ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0;
+  margin: 1rem 0 0;
+}
+
+nav a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+nav a:hover {
+  text-decoration: underline;
+}
+
+main {
+  max-width: var(--max-width);
+  margin: auto;
+}
+
+main>p,
+main>ul {
+  margin: 0.75rem 0;
+}
+
+ul {
+  padding-left: 1.5rem;
+}
+
+li {
+  margin: 0.25rem 0;
+}
+
+h2 {
+  color: var(--heading-color);
+  margin-top: 2.5rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 1rem;
+}
+
+h3 {
+  margin-top: 1.5rem;
+  scroll-margin-top: 1rem;
 }
 
 .tinker-box {
@@ -48,11 +101,6 @@ header h1 {
 
 .tinker-box:hover {
   transform: scale(1.01);
-}
-
-h2 {
-  color: #ffb74d;
-  margin-bottom: 0.5rem;
 }
 
 .btn {
@@ -71,11 +119,86 @@ h2 {
   background-color: var(--btn-hover);
 }
 
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+#commit-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+#commit-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.commit-hash {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.commit-date {
+  color: var(--muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.commit-error {
+  color: var(--muted);
+  font-style: italic;
+}
+
+#load-commits {
+  font: inherit;
+  color: #121212;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: filter 0.3s;
+}
+
+#load-commits:hover {
+  filter: brightness(1.1);
+}
+
 footer {
   text-align: center;
   font-size: 0.9rem;
   margin-top: 3rem;
-  opacity: 0.6;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
 }
 
 /* Animations */
@@ -88,6 +211,7 @@ footer {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   100% {
     opacity: 1;
     transform: translateY(0);

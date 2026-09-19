@@ -170,7 +170,7 @@ cd bundla
 cargo build --release
 
 # in the `client` directory, bundle `src/`, serve `dev/`
-cd client && ./target/release/bundla --header "Access-Control-Allow-Origin: *"
+./target/release/bundla --src client/src --dist client/dev --header "Access-Control-Allow-Origin: *"
 
 # install globally from the local package
 # compiles and copies the binary to `~/.cargo/bin/bundla`
