@@ -11,6 +11,7 @@ pub async fn js_bundle(
     dist: &Path,
     dir: &Path,
     options: Options,
+    warnings: &mut Vec<String>,
 ) -> Result<String, String> {
     let stem = file_stem_extract(source, "scripts");
     let import = rel
@@ -36,7 +37,7 @@ pub async fn js_bundle(
         .map_err(|err| format!("js bundle error: {err}"))?;
 
     for warning in output.warnings {
-        eprintln!("js bundle warning: {warning}");
+        warnings.push(format!("js bundle: {warning}"));
     }
 
     let dist_dir = dist_mkdir(dist, dir)?;
@@ -99,6 +100,7 @@ mod tests {
             &src.join("out"),
             Path::new("scripts"),
             Options::DEV,
+            &mut vec![],
         )
         .await
         .unwrap_err();
@@ -122,6 +124,7 @@ mod tests {
             &src.join("out"),
             Path::new(""),
             Options::DEV,
+            &mut vec![],
         )
         .await
         .unwrap_err();
@@ -143,6 +146,7 @@ mod tests {
             &dist,
             Path::new("scripts"),
             Options::RELEASE,
+            &mut vec![],
         )
         .await
         .unwrap();

@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use clap::Parser;
+use tokio::sync::broadcast;
 
-use bundla::{BundlerOptions, Server, ServerConfig, bundle, dev, serve};
+use bundla::{BundlerOptions, DevLog, Server, ServerConfig, bundle, dev, serve};
 
 #[derive(Parser)]
 #[command(
@@ -78,11 +79,18 @@ async fn run(args: &Args) -> Result<(), String> {
 
     match mode_select(args.release, args.serve) {
         Mode::Dev => {
-            let server = dev(&args.src, &server_config_build(args, dist)).await?;
+            let (tx_log, mut rx_log) = broadcast::channel::<DevLog>(100);
+            let server = dev(&args.src, &server_config_build(args, dist), tx_log).await?;
+            tokio::spawn(async move {
+                while let Ok(log) = rx_log.recv().await {
+                    dev_log_print(&log);
+                }
+            });
             start(server, args.open).await
         }
         Mode::Release => {
-            bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
+            let warnings = bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
+            warnings_print(&warnings);
             println!("bundled {}", dist.display());
             Ok(())
         }
@@ -91,7 +99,8 @@ async fn run(args: &Args) -> Result<(), String> {
             start(server, args.open).await
         }
         Mode::ReleaseThenServe => {
-            bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
+            let warnings = bundle(&args.src, &dist, BundlerOptions::RELEASE).await?;
+            warnings_print(&warnings);
             println!("bundled {}", dist.display());
             let server = serve(&server_config_build(args, dist)).await?;
             start(server, args.open).await
@@ -138,6 +147,27 @@ async fn start(server: Server, open: bool) -> Result<(), String> {
     }
 
     server.run().await
+}
+
+fn warnings_print(warnings: &[String]) {
+    for warning in warnings {
+        eprintln!("warning: {warning}");
+    }
+}
+
+fn dev_log_print(log: &DevLog) {
+    match log {
+        DevLog::Change(reload_type, paths) => {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let message = format!("reloading {}", reload_type.as_str());
+            for path in paths {
+                let rel = path.strip_prefix(&cwd).unwrap_or(path);
+                println!("Change detected: {} — {message}", rel.display());
+            }
+        }
+        DevLog::Warn(warning) => eprintln!("warning: {warning}"),
+        DevLog::Error(err) => eprintln!("error: {err}"),
+    }
 }
 
 #[cfg(test)]

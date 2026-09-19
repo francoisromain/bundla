@@ -1,7 +1,7 @@
-pub use webadev::{Config as ServerConfig, Server};
+pub use webadev::{Config as ServerConfig, ReloadType, Server};
 
 mod bundler;
 pub use bundler::{Options as BundlerOptions, bundle};
 
 mod server;
-pub use server::{dev, serve};
+pub use server::{DevLog, dev, serve};

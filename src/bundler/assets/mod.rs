@@ -24,6 +24,7 @@ pub async fn asset_process(
     dist: &Path,
     options: Options,
     cache: &mut HashMap<PathBuf, String>,
+    warnings: &mut Vec<String>,
 ) -> Result<String, String> {
     let asset_path_relative = asset_path
         .strip_prefix(src)
@@ -39,7 +40,16 @@ pub async fn asset_process(
     let file_name = match ext.as_str() {
         e if CSS_EXTENSIONS.contains(&e) => css_bundle(asset_path, src, dist, dir, options, cache)?,
         e if JS_EXTENSIONS.contains(&e) => {
-            js_bundle(asset_path, src, asset_path_relative, dist, dir, options).await?
+            js_bundle(
+                asset_path,
+                src,
+                asset_path_relative,
+                dist,
+                dir,
+                options,
+                warnings,
+            )
+            .await?
         }
         other => {
             return Err(format!(
@@ -190,6 +200,7 @@ mod tests {
             &dist,
             Options::DEV,
             &mut HashMap::new(),
+            &mut vec![],
         )
         .await
         .unwrap();
@@ -213,6 +224,7 @@ mod tests {
             &dist,
             Options::DEV,
             &mut HashMap::new(),
+            &mut vec![],
         )
         .await
         .unwrap();
@@ -236,6 +248,7 @@ mod tests {
             &dist,
             Options::DEV,
             &mut HashMap::new(),
+            &mut vec![],
         )
         .await
         .unwrap();
@@ -257,6 +270,7 @@ mod tests {
             &dist,
             Options::DEV,
             &mut HashMap::new(),
+            &mut vec![],
         )
         .await
         .unwrap_err();
@@ -283,6 +297,7 @@ mod tests {
             &dist,
             options,
             &mut HashMap::new(),
+            &mut vec![],
         )
         .await
         .unwrap();

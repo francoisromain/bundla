@@ -49,7 +49,11 @@ impl Options {
 /// bundled (one output per asset, cached by source path) and rewritten in
 /// place. `dist` is replaced atomically: the build renders into a temp
 /// sibling first, so a failed build never leaves a wiped or partial output.
-pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<(), String> {
+///
+/// `Ok` returns the non-fatal warnings collected during the build (skipped
+/// unreadable assets, skipped non-module scripts, bundler warnings), so the
+/// caller decides how to display them.
+pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<Vec<String>, String> {
     if !src.is_dir() {
         return Err(format!("source directory not found: {}", src.display()));
     }
@@ -66,6 +70,8 @@ pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<(), Str
         return Err(format!("no .html pages found in {}", src.display()));
     }
 
+    let mut warnings = Vec::new();
+
     let dist_tmp = dist
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -77,13 +83,15 @@ pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<(), Str
             std::process::id()
         ));
 
-    if let Err(err) = static_asset_copy(&src, &dist_tmp) {
+    if let Err(err) = static_asset_copy(&src, &dist_tmp, &mut warnings) {
         let _ = fs::remove_dir_all(&dist_tmp);
 
         return Err(err);
     }
 
-    if let Err(err) = page_list_bundle(&page_path_list, &src, &dist_tmp, options).await {
+    if let Err(err) =
+        page_list_bundle(&page_path_list, &src, &dist_tmp, options, &mut warnings).await
+    {
         let _ = fs::remove_dir_all(&dist_tmp);
 
         return Err(err);
@@ -95,7 +103,9 @@ pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<(), Str
     }
 
     fs::rename(&dist_tmp, dist)
-        .map_err(|err| format!("failed to move build into {}: {err}", dist.display()))
+        .map_err(|err| format!("failed to move build into {}: {err}", dist.display()))?;
+
+    Ok(warnings)
 }
 
 async fn page_list_bundle(
@@ -103,6 +113,7 @@ async fn page_list_bundle(
     src: &Path,
     dist: &Path,
     options: Options,
+    warnings: &mut Vec<String>,
 ) -> Result<(), String> {
     fs::create_dir_all(dist)
         .map_err(|err| format!("failed to create {}: {err}", dist.display()))?;
@@ -111,7 +122,7 @@ async fn page_list_bundle(
     let mut cache: HashMap<PathBuf, String> = HashMap::new();
 
     for page_path in page_path_list {
-        page_bundle(page_path, src, dist, options, &mut cache).await?;
+        page_bundle(page_path, src, dist, options, &mut cache, warnings).await?;
     }
 
     Ok(())
@@ -143,11 +154,12 @@ async fn page_bundle(
     dist: &Path,
     options: Options,
     cache: &mut HashMap<PathBuf, String>,
+    warnings: &mut Vec<String>,
 ) -> Result<(), String> {
     let html = fs::read_to_string(page_path)
         .map_err(|err| format!("{} unreadable: {err}", page_path.display()))?;
 
-    let asset_refs = html_asset_refs_extract(&html, page_path)?;
+    let asset_refs = html_asset_refs_extract(&html, page_path, warnings)?;
 
     let mut asset_ref_rewritten_map: HashMap<String, String> = HashMap::new();
     for asset_ref in asset_refs {
@@ -155,7 +167,8 @@ async fn page_bundle(
             let file_name = match cache.get(&asset_path) {
                 Some(file_name) => file_name.clone(),
                 None => {
-                    let name = asset_process(&asset_path, src, dist, options, cache).await?;
+                    let name =
+                        asset_process(&asset_path, src, dist, options, cache, warnings).await?;
 
                     cache.insert(asset_path.clone(), name.clone());
                     name
@@ -250,6 +263,7 @@ mod tests {
             &dist,
             Options::RELEASE,
             &mut cache,
+            &mut vec![],
         )
         .await
         .unwrap_err();
@@ -280,6 +294,7 @@ mod tests {
             &dist,
             Options::RELEASE,
             &mut cache,
+            &mut vec![],
         )
         .await
         .unwrap();

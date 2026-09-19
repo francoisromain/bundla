@@ -6,9 +6,13 @@ use super::assets::{CSS_EXTENSIONS, JS_EXTENSIONS};
 
 // mirror every non-`.html` file under `src` that is not a bundled asset,
 // preserving the relative layout. dotted files and dotted directories are
-// skipped. unreadable source entries are skipped with a warning; a failure
-// to write into `dist` is a hard error.
-pub fn static_asset_copy(src: &Path, dist: &Path) -> Result<(), String> {
+// skipped. unreadable source entries are skipped, reported as warnings; a
+// failure to write into `dist` is a hard error.
+pub fn static_asset_copy(
+    src: &Path,
+    dist: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<(), String> {
     for entry in WalkDir::new(src)
         .min_depth(1)
         .into_iter()
@@ -23,7 +27,9 @@ pub fn static_asset_copy(src: &Path, dist: &Path) -> Result<(), String> {
         let entry = match entry {
             Ok(entry) => entry,
             Err(err) => {
-                eprintln!("warning: skipping unreadable path during static copy: {err}");
+                warnings.push(format!(
+                    "skipping unreadable path during static copy: {err}"
+                ));
                 continue;
             }
         };
@@ -55,10 +61,10 @@ pub fn static_asset_copy(src: &Path, dist: &Path) -> Result<(), String> {
         match fs::metadata(path) {
             Ok(_) => {}
             Err(err) => {
-                eprintln!(
-                    "warning: skipping unreadable static asset {}: {err}",
+                warnings.push(format!(
+                    "skipping unreadable static asset {}: {err}",
                     path.display()
-                );
+                ));
                 continue;
             }
         }
@@ -66,10 +72,10 @@ pub fn static_asset_copy(src: &Path, dist: &Path) -> Result<(), String> {
             // a stat-able source can still be unreadable (e.g. mode 000),
             // so probe readability before blaming the destination
             if fs::read(path).is_err() {
-                eprintln!(
-                    "warning: skipping unreadable static asset {}: {err}",
+                warnings.push(format!(
+                    "skipping unreadable static asset {}: {err}",
                     path.display()
-                );
+                ));
                 continue;
             }
             return Err(format!(
@@ -132,7 +138,8 @@ mod tests {
         write_file(&src, ".git/HEAD", "ref");
 
         let dist = src.join("out");
-        static_asset_copy(&src, &dist).unwrap();
+        let mut warnings = Vec::new();
+        static_asset_copy(&src, &dist, &mut warnings).unwrap();
 
         assert_eq!(list_rel(&dist), ["fonts/x.woff", "img/logo.png", "noext"]);
         assert_eq!(
@@ -157,8 +164,13 @@ mod tests {
         fs::set_permissions(src.join("secret.txt"), fs::Permissions::from_mode(0o000)).unwrap();
 
         let dist = src.join("out");
-        static_asset_copy(&src, &dist).unwrap();
+        let mut warnings = Vec::new();
+        static_asset_copy(&src, &dist, &mut warnings).unwrap();
 
         assert!(dist.join("ok.txt").is_file());
+        assert!(
+            warnings.iter().any(|w| w.contains("secret.txt")),
+            "expected a warning about the unreadable asset, got: {warnings:?}"
+        );
     }
 }

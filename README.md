@@ -1,17 +1,25 @@
 # bundla
 
+<p align="center">
+  <br>
+  <a href="https://github.com/francoisromain/bundla">
+    <img src="https://raw.githubusercontent.com/francoisromain/bundla/main/client/src/assets/bundla.svg" alt="Bundla logo" width="160">
+  </a>
+  <br>
+</p>
+
 > Bundle Html, Css, and Js with live-reload for developpement, or with minification and hashed filenames for release.
 
 > Built with rust on the [webadev](https://crates.io/crates/webadev) library.
 
 ## Features
 
-Bundle a static website Html, Css, and Js for developpement or release.
+- bundle a static website Html, Css, and Js for developpement or release.
 
 ### Developpement (default)
 
 - watch `src`,
-- re-bundle on every change,
+- re-bundle on every change to `dev`,
 - serve `dev`,
 - hot-reload after CSS edits, full page reload for anything else.
 
@@ -21,8 +29,18 @@ If a bundle fails, the browser stays on the previous one.
 
 - bundle, minify, hash filenames from `src`
 - output to `dist`
-- option: serve the `dist` directory 
+- option: serve the `dist` directory
 
+Atomic swap: the build renders into a temporary sibling of `dist` and swaps it in only on success, so a failed build never leaves a wiped or partial output.
+
+## Conventions
+
+- every `.html` file under `src` is a page entry, mirrored to `dist`
+- `<link rel="stylesheet">` and `<script type="module">` references are bundled (one output per asset, cached across pages) and rewritten in place; `type="module"` is required for scripts
+- the source layout is mirrored in the output and `?query`/`#fragment` suffixes on references are preserved
+- relative css `url()` and css-to-css `@import` targets are bundled and rewritten; remote and absolute URLs are left for the browser to resolve
+- everything else under `src` is copied as-is (static assets)
+- `dist` must not overlap `src`
 
 ## CLI
 
@@ -67,7 +85,79 @@ bundla --dist dist
 
 ## Library
 
-to-do
+### 1. Serve only
+
+```rust
+use bundla::{ServerConfig, serve};
+
+let server = serve(&config).await?;
+server.run().await?;
+```
+
+`ServerConfig` and `Server` are re-exported from [webadev](https://crates.io/crates/webadev).
+
+Use `0` as `config.port` to let the OS pick a free port (visible in `server.url`).
+
+### 2. Bundle
+
+```rust
+use std::path::Path;
+
+use bundla::{BundlerOptions, bundle};
+
+let warnings = bundle(Path::new("src"), Path::new("dist"), BundlerOptions::RELEASE).await?;
+for warning in warnings {
+    eprintln!("warning: {warning}");
+}
+```
+
+- `BundlerOptions::DEV` (the default): unminified, with sourcemaps, no hashed filenames.
+- `BundlerOptions::RELEASE`: minified, hashed filenames, no sourcemaps.
+- `Ok` returns the non-fatal warnings collected during the build (skipped unreadable assets, skipped non-module scripts, bundler warnings); the library never prints — displaying them is up to you.
+
+Build a custom profile from the flags:
+
+```rust
+BundlerOptions {
+    minify: true,
+    sourcemap: true,
+    hash: false,
+}
+```
+
+### 3. Dev server with live reload
+
+```rust
+use std::net::IpAddr;
+use std::path::Path;
+
+use bundla::{DevLog, ServerConfig, dev};
+use tokio::sync::broadcast;
+
+let config = ServerConfig {
+    dir: "dev".into(),
+    ip: IpAddr::from([127, 0, 0, 1]),
+    port: 8080,
+    headers: vec![],
+    index: "index.html".into(),
+};
+
+// runtime logs are reported on your broadcast channel:
+// - `DevLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
+// - `DevLog::Warn(String)`: bundle warnings
+// - `DevLog::Error(String)`: rebundle failures during watch (previous bundle is kept)
+let (tx_log, mut rx_log) = broadcast::channel(100);
+let server = dev(Path::new("src"), &config, tx_log).await?; // bundles, watches, serves
+println!("Starting development server at {}", server.url);
+
+tokio::spawn(async move {
+    while let Ok(log) = rx_log.recv().await {
+        eprintln!("log: {log:?}");
+    }
+});
+
+server.run().await?; // blocks until shutdown
+```
 
 ## Local installation
 

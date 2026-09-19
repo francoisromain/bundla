@@ -7,7 +7,12 @@ use std::{
 use lol_html::{RewriteStrSettings, element, html_content::Element, rewrite_str};
 
 // collect `<link rel="stylesheet">` hrefs and `<script type="module">` srcs, in document order
-pub fn html_asset_refs_extract(html: &str, page: &Path) -> Result<Vec<String>, String> {
+// non-module scripts are skipped and reported as warnings
+pub fn html_asset_refs_extract(
+    html: &str,
+    page: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<String>, String> {
     let asset_refs: RefCell<Vec<String>> = RefCell::new(Vec::new());
 
     let settings = RewriteStrSettings::new()
@@ -23,7 +28,7 @@ pub fn html_asset_refs_extract(html: &str, page: &Path) -> Result<Vec<String>, S
             if is_module_script(el) {
                 asset_refs.borrow_mut().push(src.to_string());
             } else {
-                skip_script_warn(src.trim(), page);
+                warnings.push(skip_script_warn_message(src.trim(), page));
             }
 
             Ok(())
@@ -56,11 +61,11 @@ fn is_stylesheet_link(el: &Element<'_, '_>) -> bool {
     })
 }
 
-fn skip_script_warn(src: &str, page: &Path) {
-    eprintln!(
-        "warning: skipping classic <script> (type=\"module\" required): {src} in {}",
+fn skip_script_warn_message(src: &str, page: &Path) -> String {
+    format!(
+        "skipping classic <script> (type=\"module\" required): {src} in {}",
         page.display()
-    );
+    )
 }
 
 // rewrite the discovered references to their bundled output
@@ -137,16 +142,21 @@ mod tests {
             </head></html>
         "#;
 
-        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        let refs = html_asset_refs_extract(html, &page(), &mut vec![]).unwrap();
         assert_eq!(refs, ["./scripts/main.js", "./styles/main.css"]);
     }
 
     #[test]
-    fn extract_skips_classic_scripts() {
+    fn extract_skips_classic_scripts_and_reports_warning() {
         let html = r#"<script src="./legacy.js"></script>"#;
 
-        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        let mut warnings = Vec::new();
+        let refs = html_asset_refs_extract(html, &page(), &mut warnings).unwrap();
         assert!(refs.is_empty());
+        assert_eq!(
+            warnings,
+            [r#"skipping classic <script> (type="module" required): ./legacy.js in index.html"#]
+        );
     }
 
     #[test]
@@ -157,7 +167,7 @@ mod tests {
             <link rel="stylesheet" href="" />
         "#;
 
-        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        let refs = html_asset_refs_extract(html, &page(), &mut vec![]).unwrap();
         assert!(refs.is_empty());
     }
 
@@ -169,7 +179,7 @@ mod tests {
             <a href="./styles/main.css">css</a>
         "#;
 
-        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        let refs = html_asset_refs_extract(html, &page(), &mut vec![]).unwrap();
         assert!(refs.is_empty());
     }
 
@@ -180,7 +190,7 @@ mod tests {
             <script type="module" src="//cdn.example.com/app.js"></script>
         "#;
 
-        let refs = html_asset_refs_extract(html, &page()).unwrap();
+        let refs = html_asset_refs_extract(html, &page(), &mut vec![]).unwrap();
         assert_eq!(
             refs,
             ["https://cdn.example.com/x.css", "//cdn.example.com/app.js"]
