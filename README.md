@@ -33,8 +33,6 @@ Built with rust on the [webadev](https://crates.io/crates/webadev) library.
 - The source layout is mirrored in the output and `?query`/`#fragment` suffixes on references are preserved.
 - Relative css `url()` and css-to-css `@import` targets are bundled and rewritten; remote and absolute URLs are left for the browser to resolve.
 - Everything else under `src` is copied as-is (static assets).
-- `dev`/`dist` must not overlap `src`.
-- The build renders into a temporary sibling of `dev`/`dist` and swaps it in only on success, so a failed build never leaves a partial output.
 
 ## CLI
 

@@ -1,6 +1,6 @@
 [package]
 name = "bundla"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 description = "Bundle HTML, CSS, and JS/TS: dev mode with live-reload or release mode with minification and hashed filenames"
 license = "MIT"
@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/francoisromain/bundla"
 homepage = "https://github.com/francoisromain/bundla"
 documentation = "https://docs.rs/bundla"
-rust-version = "1.88"
+rust-version = "1.97.1"
 keywords = ["bundle", "live-reload", "web", "development", "watch"]
 categories = ["development-tools"]
 exclude = ["client/**", "sessions/**"]

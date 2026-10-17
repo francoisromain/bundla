@@ -16,7 +16,7 @@ use html::{html_asset_refs_extract, html_minify, html_rewrite};
 use path::{asset_ref_path_resolve, asset_ref_rewrite, dist_guard};
 use static_assets::static_asset_copy;
 
-/// Bundle options for css/js/html output.
+/// Bundle options for the HTML, CSS, JS/TS output.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Options {
     /// Minify the css, js, and output html.
@@ -59,7 +59,7 @@ impl Options {
     };
 }
 
-/// Bundle the html/css/js assets from `src` into `dist`.
+/// Bundle the HTML, CSS, and JS/TS assets from `src` into `dist`.
 ///
 /// Every `.html` file under `src` is a page entry, mirrored to `dist`.
 /// `<link rel="stylesheet">` and `<script type="module">` references are
