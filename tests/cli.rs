@@ -47,6 +47,14 @@ fn release_header_without_serve_fails() {
 }
 
 #[test]
+fn help_documents_random_port_default() {
+    let out = run(&["--help"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("random free port"), "got: {stdout}");
+}
+
+#[test]
 fn invalid_port_rejected() {
     let out = run(&["--port", "99999"]);
     assert_eq!(out.status.code(), Some(2), "clap parse errors exit 2");

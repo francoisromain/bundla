@@ -113,10 +113,7 @@ bundla</code></pre>
           to <code>dev/</code> or <code>dist/</code> with
           <code>--release</code>/<code>--serve</code>).
         </li>
-        <li>
-          <code>--port &lt;n&gt;</code> default 8080 (use <code>0</code> for a
-          random free port).
-        </li>
+        <li><code>--port &lt;n&gt;</code> default: random free port.</li>
         <li>
           <code>--ip &lt;addr&gt;</code> default 127.0.0.1 (use
           <code>0.0.0.0</code> to access from other devices).
@@ -253,7 +250,7 @@ cd client &amp;&amp; ./target/release/bundla --header "Access-Control-Allow-Orig
 cargo install --path . --locked
 
 # use from anywhere
-# from the current directory, bundle src/, serve dev/ on 127.0.0.1:8080
+# from the current directory, bundle src/, serve dev/ on 127.0.0.1:<resolved>
 cd ~/some/project
 bundla
 

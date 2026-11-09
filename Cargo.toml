@@ -1,6 +1,6 @@
 [package]
 name = "bundla"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Bundle HTML, CSS, and JS/TS: dev mode with live-reload or release mode with minification and hashed filenames"
 license = "MIT"
@@ -19,11 +19,11 @@ lightningcss = "1.0.0-alpha.72"
 lol_html = "3"
 minify-html = "0.18"
 open = "5"
-parcel_sourcemap = "2.1.1"
+parcel_sourcemap = "2.1.2"
 rolldown = "1"
 walkdir = "2"
 tokio = { version = "1", features = ["full"] }
-webadev = "0.6"
+webadev = "0.7"
 
 [dev-dependencies]
 reqwest = "0.13"

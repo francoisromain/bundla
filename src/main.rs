@@ -29,8 +29,8 @@ struct Args {
     #[arg(long)]
     serve: bool,
 
-    /// Port to listen on.
-    #[arg(short, long, default_value = "8080")]
+    /// Port to listen on (default: random free port).
+    #[arg(short, long, default_value = "0", hide_default_value = true)]
     port: u16,
 
     /// IP address to bind to.
@@ -202,6 +202,18 @@ mod tests {
         assert!(matches!(mode_select(true, false), Mode::Release));
         assert!(matches!(mode_select(false, true), Mode::Serve));
         assert!(matches!(mode_select(true, true), Mode::ReleaseThenServe));
+    }
+
+    #[test]
+    fn port_defaults_to_random() {
+        let parsed = Args::try_parse_from(["bundla"]).unwrap();
+        assert_eq!(parsed.port, 0);
+    }
+
+    #[test]
+    fn port_accepts_explicit_value() {
+        let parsed = Args::try_parse_from(["bundla", "--port", "9000"]).unwrap();
+        assert_eq!(parsed.port, 9000);
     }
 
     #[test]
