@@ -5,7 +5,7 @@ use std::process::exit;
 use clap::Parser;
 use tokio::sync::broadcast::{self, Sender};
 
-use bundla::{BundlerOptions, Server, ServerConfig, WatchLog, bundle, serve, watch, watch_serve};
+use bundla::{BuildOptions, Server, ServerConfig, WatchLog, build, serve, watch, watch_serve};
 
 #[derive(Parser)]
 #[command(
@@ -75,9 +75,9 @@ async fn main() {
 async fn run(args: &Args) -> Result<(), String> {
     let dist = output_dir(args);
     let options = if args.dev {
-        BundlerOptions::DEV
+        BuildOptions::DEV
     } else {
-        BundlerOptions::PROD
+        BuildOptions::PROD
     };
 
     match (args.watch, args.serve) {
@@ -116,9 +116,9 @@ async fn run(args: &Args) -> Result<(), String> {
     }
 }
 
-// Bundle once and report the result, shared by the build-first arms.
-async fn build_once(src: &Path, dist: &Path, options: BundlerOptions) -> Result<(), String> {
-    let warnings = bundle(src, dist, options).await?;
+// Build once and report the result, shared by the build-first arms.
+async fn build_once(src: &Path, dist: &Path, options: BuildOptions) -> Result<(), String> {
+    let warnings = build(src, dist, options).await?;
     warnings_print(&warnings);
     println!("bundled {}", dist.display());
     Ok(())

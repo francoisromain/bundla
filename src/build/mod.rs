@@ -16,9 +16,9 @@ use html::{html_asset_refs_extract, html_minify, html_rewrite};
 use path::{asset_ref_path_resolve, asset_ref_rewrite, dist_guard};
 use static_assets::static_asset_copy;
 
-/// Bundle options for the HTML, CSS, JS/TS output.
+/// Build options for the HTML, CSS, JS/TS output.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct BundlerOptions {
+pub struct BuildOptions {
     /// Minify the css, js, and output html.
     pub minify: bool,
     /// Emit `.map` sourcemap files next to the output.
@@ -27,17 +27,17 @@ pub struct BundlerOptions {
     pub hash: bool,
 }
 
-impl BundlerOptions {
+impl BuildOptions {
     /// Unminified, sourcemapped, no-hash filenames.
     ///
     /// ```
-    /// use bundla::BundlerOptions;
+    /// use bundla::BuildOptions;
     ///
-    /// assert!(!BundlerOptions::DEV.minify);
-    /// assert!(BundlerOptions::DEV.sourcemap);
-    /// assert!(!BundlerOptions::DEV.hash);
+    /// assert!(!BuildOptions::DEV.minify);
+    /// assert!(BuildOptions::DEV.sourcemap);
+    /// assert!(!BuildOptions::DEV.hash);
     /// ```
-    pub const DEV: BundlerOptions = BundlerOptions {
+    pub const DEV: BuildOptions = BuildOptions {
         minify: false,
         sourcemap: true,
         hash: false,
@@ -46,30 +46,31 @@ impl BundlerOptions {
     /// Minified, hashed filenames, no sourcemaps.
     ///
     /// ```
-    /// use bundla::BundlerOptions;
+    /// use bundla::BuildOptions;
     ///
-    /// assert!(BundlerOptions::PROD.minify);
-    /// assert!(!BundlerOptions::PROD.sourcemap);
-    /// assert!(BundlerOptions::PROD.hash);
+    /// assert!(BuildOptions::PROD.minify);
+    /// assert!(!BuildOptions::PROD.sourcemap);
+    /// assert!(BuildOptions::PROD.hash);
     /// ```
-    pub const PROD: BundlerOptions = BundlerOptions {
+    pub const PROD: BuildOptions = BuildOptions {
         minify: true,
         sourcemap: false,
         hash: true,
     };
 }
 
-/// Bundle the HTML, CSS, and JS/TS assets from `src` into `dist`.
+/// Build the HTML, CSS, and JS/TS assets from `src` into `dist`.
 ///
 /// Every `.html` file under `src` is a page entry, mirrored to `dist`.
 /// `<link rel="stylesheet">` and `<script type="module">` references are
 /// bundled (one output per asset, cached by source path) and rewritten in
-/// place. `dist` is replaced atomically: the build renders into a temp
-/// sibling first, so a failed build never leaves a wiped or partial output.
+/// place.
+/// `dist` is replaced atomically: the build renders into a temp sibling,
+/// so a failed build never leaves a wiped or partial output.
 ///
-/// `Ok` returns the non-fatal warnings collected during the build (skipped
-/// unreadable assets, skipped non-module scripts, bundler warnings), so the
-/// caller decides how to display them.
+/// `Ok` returns the non-fatal warnings collected during the build
+/// (skipped unreadable assets, skipped non-module scripts, bundler warnings).
+/// The caller decides how to display them.
 ///
 /// # Examples
 ///
@@ -77,7 +78,7 @@ impl BundlerOptions {
 /// use std::fs;
 /// use std::path::Path;
 ///
-/// use bundla::{BundlerOptions, bundle};
+/// use bundla::{BuildOptions, build};
 /// use tempfile::tempdir;
 ///
 /// #[tokio::main]
@@ -98,7 +99,7 @@ impl BundlerOptions {
 ///     )
 ///     .unwrap();
 ///
-///     let warnings = bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
+///     let warnings = build(&src, &dist, BuildOptions::PROD).await.unwrap();
 ///     assert!(warnings.is_empty(), "got: {warnings:?}");
 ///
 ///     let html = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -106,11 +107,7 @@ impl BundlerOptions {
 ///     assert!(html.contains("app-"), "expected a hashed js name: {html}");
 /// }
 /// ```
-pub async fn bundle(
-    src: &Path,
-    dist: &Path,
-    options: BundlerOptions,
-) -> Result<Vec<String>, String> {
+pub async fn build(src: &Path, dist: &Path, options: BuildOptions) -> Result<Vec<String>, String> {
     if !src.is_dir() {
         return Err(format!("source directory not found: {}", src.display()));
     }
@@ -169,7 +166,7 @@ async fn page_list_bundle(
     page_path_list: &[PathBuf],
     src: &Path,
     dist: &Path,
-    options: BundlerOptions,
+    options: BuildOptions,
     warnings: &mut Vec<String>,
 ) -> Result<(), String> {
     fs::create_dir_all(dist)
@@ -209,7 +206,7 @@ async fn page_bundle(
     page_path: &Path,
     src: &Path,
     dist: &Path,
-    options: BundlerOptions,
+    options: BuildOptions,
     cache: &mut HashMap<PathBuf, String>,
     warnings: &mut Vec<String>,
 ) -> Result<(), String> {
@@ -318,7 +315,7 @@ mod tests {
             &src.join("missing.html"),
             &src,
             &dist,
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
             &mut cache,
             &mut vec![],
         )
@@ -349,7 +346,7 @@ mod tests {
             &src.join("index.html"),
             &src,
             &dist,
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
             &mut cache,
             &mut vec![],
         )

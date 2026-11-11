@@ -1,11 +1,8 @@
 use std::{fs, path::Path};
 
-use rolldown::{
-    Bundler, BundlerOptions as RolldownBundlerOptions, InputItem, OutputFormat, RawMinifyOptions,
-    SourceMapType,
-};
+use rolldown::{Bundler, BundlerOptions, InputItem, OutputFormat, RawMinifyOptions, SourceMapType};
 
-use super::{super::BundlerOptions, dist_mkdir, file_name_output_format, file_stem_extract};
+use super::{super::BuildOptions, dist_mkdir, file_name_output_format, file_stem_extract};
 
 pub async fn js_bundle(
     source: &Path,
@@ -13,7 +10,7 @@ pub async fn js_bundle(
     rel: &Path,
     dist: &Path,
     dir: &Path,
-    options: BundlerOptions,
+    options: BuildOptions,
     warnings: &mut Vec<String>,
 ) -> Result<String, String> {
     let stem = file_stem_extract(source, "scripts");
@@ -21,7 +18,7 @@ pub async fn js_bundle(
         .to_str()
         .ok_or_else(|| format!("path is not valid utf-8: {}", rel.display()))?;
 
-    let mut bundler = Bundler::new(RolldownBundlerOptions {
+    let mut bundler = Bundler::new(BundlerOptions {
         input: Some(vec![InputItem {
             name: Some(stem.clone()),
             import: import.to_string(),
@@ -30,7 +27,7 @@ pub async fn js_bundle(
         format: Some(OutputFormat::Esm),
         minify: Some(RawMinifyOptions::Bool(options.minify)),
         sourcemap: options.sourcemap.then_some(SourceMapType::File),
-        ..RolldownBundlerOptions::default()
+        ..BundlerOptions::default()
     })
     .map_err(|err| format!("bundler init error: {err}"))?;
 
@@ -184,7 +181,7 @@ mod tests {
             Path::new("scripts/app.js"),
             &src.join("out"),
             Path::new("scripts"),
-            BundlerOptions::DEV,
+            BuildOptions::DEV,
             &mut vec![],
         )
         .await
@@ -208,7 +205,7 @@ mod tests {
             rel,
             &src.join("out"),
             Path::new(""),
-            BundlerOptions::DEV,
+            BuildOptions::DEV,
             &mut vec![],
         )
         .await
@@ -230,7 +227,7 @@ mod tests {
             Path::new("scripts/app.js"),
             &dist,
             Path::new("scripts"),
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
             &mut vec![],
         )
         .await

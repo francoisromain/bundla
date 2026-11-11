@@ -1,3 +1,6 @@
+// The CLI always builds with serving (`-s`), so its tests need the feature
+#![cfg(feature = "serve")]
+
 use std::{
     fs,
     io::{BufRead, BufReader},
@@ -167,10 +170,10 @@ fn dev_builds_dev() {
     assert!(html.contains("./styles/main.css"), "got: {html}");
 }
 
-// Headless, end to end: `-dw` bundles on startup, rebuilds on change,
+// Headless, end to end: `-dw` builds on startup, rebuilds on change,
 // and writes clean files (no reload script injection)
 #[test]
-fn dev_watch_rebundles_without_injection() {
+fn dev_watch_rebuilds_without_injection() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     fs::create_dir_all(&src).unwrap();
@@ -189,13 +192,13 @@ fn dev_watch_rebundles_without_injection() {
 
     assert!(
         wait_contains(&out_html, "v1", Duration::from_secs(60)),
-        "initial bundle missing"
+        "initial build missing"
     );
 
     fs::write(src.join("index.html"), "<html><body>v2</body></html>").unwrap();
     assert!(
         wait_contains(&out_html, "v2", Duration::from_secs(60)),
-        "rebundle after change missing"
+        "rebuild after change missing"
     );
 
     // nothing injected into the written files: no reload script
@@ -210,7 +213,7 @@ fn dev_watch_rebundles_without_injection() {
 
 // `-w` keeps hashing while rebuilding headless
 #[test]
-fn watch_hashes_on_rebundle() {
+fn watch_hashes_on_rebuild() {
     let dir = tempdir().unwrap();
     fixture(dir.path());
     let dist = dir.path().join("out");
@@ -228,7 +231,7 @@ fn watch_hashes_on_rebundle() {
 
     assert!(
         wait_contains(&dist.join("index.html"), "v1", Duration::from_secs(60)),
-        "initial bundle missing"
+        "initial build missing"
     );
     let first_css = hashed_css_name(&styles_dir);
     assert!(first_css.starts_with("main-"), "got: {first_css}");
@@ -242,7 +245,7 @@ fn watch_hashes_on_rebundle() {
     assert_ne!(
         hashed_css_name(&styles_dir),
         first_css,
-        "rebundle after css change missing"
+        "rebuild after css change missing"
     );
 
     // nothing injected into the written files: no reload script

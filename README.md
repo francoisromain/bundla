@@ -63,7 +63,7 @@ bundla
 Prod build
 
 ```bash
-# prod build, watch `src` and rebuild on change
+# prod build, watch `src/` and rebuild on change
 bundla -w
 
 # prod build once, then serve the output
@@ -92,6 +92,18 @@ bundla -dws --port 9000 --open
 
 ## Library
 
+### Feature flag
+
+The `serve` feature (on by default): 
+- is required for: `serve`, `watch_serve`, `Server`, and `ServerConfig`,
+- is not required for: `build`, `watch`, `Watch`, `WatchLog`, and `BuildOptions`.
+
+To build or watch without the server (and drop the axum dependency):
+
+```toml
+bundla = { version = "0.4", default-features = false }
+```
+
 ### 1. Serve only
 
 ```rust
@@ -118,22 +130,22 @@ Use `0` as `config.port` to let the OS pick a free port (visible in `server.url`
 
 ```rust
 use std::path::Path;
-use bundla::{BundlerOptions, bundle};
+use bundla::{BuildOptions, build};
 
-let warnings = bundle(Path::new("src"), Path::new("dist"), BundlerOptions::PROD).await?;
+let warnings = build(Path::new("src"), Path::new("dist"), BuildOptions::PROD).await?;
 for warning in warnings {
     eprintln!("warning: {warning}");
 }
 ```
 
-- `BundlerOptions::DEV`: unminified, with sourcemaps, no hashed filenames.
-- `BundlerOptions::PROD`: minified, hashed filenames, no sourcemaps.
+- `BuildOptions::DEV`: unminified, with sourcemaps, no hashed filenames.
+- `BuildOptions::PROD`: minified, hashed filenames, no sourcemaps.
 - `Ok` returns the warnings collected during the build (unreadable assets, non-module scripts, bundler warnings); displaying them is up to you.
 
 Build a custom profile from the flags:
 
 ```rust
-BundlerOptions {
+BuildOptions {
     minify: true,
     sourcemap: true,
     hash: false,
@@ -145,17 +157,17 @@ BundlerOptions {
 ```rust
 use std::path::Path;
 use tokio::sync::broadcast;
-use bundla::{BundlerOptions, WatchLog, Watch, watch};
+use bundla::{BuildOptions, WatchLog, Watch, watch};
 
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
-// bundles `src/` into `dev/` on startup, then on every change
+// Build `src/` into `dev/` on startup, then on every change
 // no server, no port, no browser
-let watcher = watch(Path::new("src"), Path::new("dev"), BundlerOptions::DEV, tx_log).await?;
+let watcher = watch(Path::new("src"), Path::new("dev"), BuildOptions::DEV, tx_log).await?;
 
 // runtime logs are reported on your broadcast channel:
 // - `WatchLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
-// - `WatchLog::Warn(String)`: bundle warnings
+// - `WatchLog::Warn(String)`: build warnings
 // - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
 
 tokio::spawn(async move {
@@ -175,7 +187,7 @@ watcher.run().await?; // rebuilds until the future is dropped
 use std::net::IpAddr;
 use std::path::Path;
 use tokio::sync::broadcast;
-use bundla::{BundlerOptions, WatchLog, ServerConfig, watch_serve};
+use bundla::{BuildOptions, WatchLog, ServerConfig, watch_serve};
 
 let config = ServerConfig {
     dir: "dev".into(),
@@ -187,12 +199,12 @@ let config = ServerConfig {
 
 // runtime logs are reported on your broadcast channel:
 // - `WatchLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
-// - `WatchLog::Warn(String)`: bundle warnings
+// - `WatchLog::Warn(String)`: build warnings
 // - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
-// `BundlerOptions::DEV` for the dev loop
-let server = watch_serve(Path::new("src"), &config, BundlerOptions::DEV, tx_log).await?;
+// `BuildOptions::DEV` for the dev loop
+let server = watch_serve(Path::new("src"), &config, BuildOptions::DEV, tx_log).await?;
 println!("Starting development server at {}", server.url);
 
 tokio::spawn(async move {

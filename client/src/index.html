@@ -1,150 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bundla — bundle HTML, CSS, and JS/TS</title>
-    <link rel="icon" type="image/svg+xml" href="./assets/bundla.svg" />
-    <link rel="stylesheet" href="./styles/styles.css" />
-  </head>
 
-  <body>
-    <header>
-      <h1 id="top">Bundla</h1>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bundla: bundle HTML, CSS, and JS/TS</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/bundla.svg" />
+  <link rel="stylesheet" href="./styles/styles.css" />
+</head>
 
-      <p align="center">
-        <br />
-        <a href="https://github.com/francoisromain/bundla">
-          <img src="./assets/bundla.svg" alt="Bundla logo" width="160" />
-        </a>
-        <br />
-      </p>
+<body>
+  <header>
+    <h1 id="top">Bundla</h1>
 
-      <p>Bundle HTML, CSS, and JS/TS:</p>
+    <p align="center">
+      <br />
+      <a href="https://github.com/francoisromain/bundla">
+        <img src="./assets/bundla.svg" alt="Bundla logo" width="160" />
+      </a>
+      <br />
+    </p>
+
+    <p>Bundle HTML, CSS, and JS/TS</p>
+    <ul>
+      <li>prod build with minification and hashed filenames,</li>
+      <li>dev build with sourcemaps,</li>
+      <li>watch option to rebuild on change,</li>
+      <li>serve option.</li>
+    </ul>
+    <p>
+      Built with Rust on the
+      <a href="https://crates.io/crates/webadev">webadev</a> library.
+    </p>
+    <nav>
       <ul>
-        <li>prod build with minification and hashed filenames,</li>
-        <li>dev build with sourcemaps,</li>
-        <li>watch option to rebuild on change,</li>
-        <li>serve option.</li>
+        <li><a href="#production-build">Production build</a></li>
+        <li><a href="#development-build">Development build</a></li>
+        <li><a href="#conventions">Conventions</a></li>
+        <li><a href="#cli">CLI</a></li>
+        <li><a href="#library">Library</a></li>
+        <li><a href="#local-installation">Local installation</a></li>
+        <li><a href="#version-history">Version history</a></li>
       </ul>
-      <p>
-        Built with Rust on the
-        <a href="https://crates.io/crates/webadev">webadev</a> library.
-      </p>
-      <nav>
-        <ul>
-          <li><a href="#production-build">Production build</a></li>
-          <li><a href="#development-build">Development build</a></li>
-          <li><a href="#conventions">Conventions</a></li>
-          <li><a href="#cli">CLI</a></li>
-          <li><a href="#library">Library</a></li>
-          <li><a href="#local-installation">Local installation</a></li>
-          <li><a href="#version-history">Version history</a></li>
-        </ul>
-      </nav>
-    </header>
+    </nav>
+  </header>
 
-    <main>
-      <h2 id="production-build">Production build (default)</h2>
-      <p>
-        Builds <code>src/</code> into <code>dist/</code>. Files are minified,
-        with hashed filenames.
-      </p>
+  <main>
+    <h2 id="production-build">Production build (default)</h2>
+    <p>
+      Builds <code>src/</code> into <code>dist/</code>. Files are minified,
+      with hashed filenames.
+    </p>
 
-      <h2 id="development-build">Development build</h2>
-      <p>
-        Builds <code>src/</code> into <code>dev/</code>. Files are unminified
-        with sourcemaps.
-      </p>
+    <h2 id="development-build">Development build</h2>
+    <p>
+      Builds <code>src/</code> into <code>dev/</code>. Files are unminified
+      with sourcemaps.
+    </p>
 
-      <h2 id="conventions">Conventions</h2>
-      <ul>
-        <li>
-          Every <code>.html</code> file under <code>src</code> is a page entry,
-          mirrored to <code>dev</code>/<code>dist</code>.
-        </li>
-        <li>
-          <code>&lt;link rel="stylesheet"&gt;</code> and
-          <code>&lt;script type="module"&gt;</code> references are bundled (one
-          output per asset, cached across pages) and rewritten in place;
-          <code>type="module"</code> is required for scripts.
-        </li>
-        <li>
-          The source layout is mirrored in the output and
-          <code>?query</code>/<code>#fragment</code> suffixes on references are
-          preserved.
-        </li>
-        <li>
-          Relative css <code>url()</code> and css-to-css
-          <code>@import</code> targets are bundled and rewritten; remote and
-          absolute URLs are left for the browser to resolve.
-        </li>
-        <li>
-          Everything else under <code>src</code> is copied as-is (static
-          assets).
-        </li>
-        <li>
-          The live-reload script is serve-time only (patched into HTTP
-          responses, never written to <code>dev</code> or <code>dist</code>).
-        </li>
-      </ul>
+    <h2 id="conventions">Conventions</h2>
+    <ul>
+      <li>
+        Every <code>.html</code> file under <code>src</code> is a page entry,
+        mirrored to <code>dev</code>/<code>dist</code>.
+      </li>
+      <li>
+        <code>&lt;link rel="stylesheet"&gt;</code> and
+        <code>&lt;script type="module"&gt;</code> references are bundled (one
+        output per asset, cached across pages) and rewritten in place;
+        <code>type="module"</code> is required for scripts.
+      </li>
+      <li>
+        The source layout is mirrored in the output and
+        <code>?query</code>/<code>#fragment</code> suffixes on references are
+        preserved.
+      </li>
+      <li>
+        Relative css <code>url()</code> and css-to-css
+        <code>@import</code> targets are bundled and rewritten; remote and
+        absolute URLs are left for the browser to resolve.
+      </li>
+      <li>
+        Everything else under <code>src</code> is copied as-is (static
+        assets).
+      </li>
+      <li>
+        The live-reload script is serve-time only (patched into HTTP
+        responses, never written to <code>dev</code> or <code>dist</code>).
+      </li>
+    </ul>
 
-      <h2 id="cli">CLI</h2>
-      <pre><code>cargo install bundla
+    <h2 id="cli">CLI</h2>
+    <pre><code>cargo install bundla
 
 # build `src/` into `dist/` (minified, hashed)
 bundla</code></pre>
 
-      <h3>Options</h3>
-      <ul>
-        <li>
-          <code>--dev</code> / <code>-d</code>: dev build, unminified with
-          sourcemaps, output dir <code>dev/</code>.
-        </li>
-        <li>
-          <code>--watch</code> / <code>-w</code>: rebuild on every change to
-          <code>src/</code>.
-        </li>
-        <li>
-          <code>--serve</code> / <code>-s</code>: build once, then serve the
-          output directory.
-        </li>
-        <li>
-          <code>--src &lt;dir&gt;</code>: directory to bundle (default:
-          <code>src</code>).
-        </li>
-        <li>
-          <code>--dist &lt;dir&gt;</code>: output directory (default:
-          <code>dist/</code>, or <code>dev/</code> with <code>--dev</code>).
-        </li>
-      </ul>
+    <h3>Options</h3>
+    <ul>
+      <li>
+        <code>--dev</code> / <code>-d</code>: dev build, unminified with
+        sourcemaps, output dir <code>dev/</code>.
+      </li>
+      <li>
+        <code>--watch</code> / <code>-w</code>: rebuild on every change to
+        <code>src/</code>.
+      </li>
+      <li>
+        <code>--serve</code> / <code>-s</code>: build once, then serve the
+        output directory.
+      </li>
+      <li>
+        <code>--src &lt;dir&gt;</code>: directory to build (default:
+        <code>src</code>).
+      </li>
+      <li>
+        <code>--dist &lt;dir&gt;</code>: output directory (default:
+        <code>dist/</code>, or <code>dev/</code> with <code>--dev</code>).
+      </li>
+    </ul>
 
-      <h4>Server options (require --serve)</h4>
-      <ul>
-        <li>
-          <code>--port &lt;n&gt;</code>: port to listen on (default: random
-          free port).
-        </li>
-        <li>
-          <code>--ip &lt;addr&gt;</code>: IP address to bind to (default
-          127.0.0.1, use <code>0.0.0.0</code> to access from other devices).
-        </li>
-        <li><code>--open</code>: open the page in the browser on start.</li>
-        <li>
-          <code>--index &lt;file&gt;</code>: file served by default for the
-          root and directory requests (default: <code>index.html</code>).
-        </li>
-        <li>
-          <code>--header</code>: additional HTTP header on every response
-          (repeatable), e.g.
-          <code>--header "Access-Control-Allow-Origin: *"</code>.
-        </li>
-      </ul>
+    <h4>Server options (require --serve)</h4>
+    <ul>
+      <li>
+        <code>--port &lt;n&gt;</code>: port to listen on (default: random
+        free port).
+      </li>
+      <li>
+        <code>--ip &lt;addr&gt;</code>: IP address to bind to (default
+        127.0.0.1, use <code>0.0.0.0</code> to access from other devices).
+      </li>
+      <li><code>--open</code>: open the page in the browser on start.</li>
+      <li>
+        <code>--index &lt;file&gt;</code>: file served by default for the
+        root and directory requests (default: <code>index.html</code>).
+      </li>
+      <li>
+        <code>--header</code>: additional HTTP header on every response
+        (repeatable), e.g.
+        <code>--header "Access-Control-Allow-Origin: *"</code>.
+      </li>
+    </ul>
 
-      <h3>Examples</h3>
+    <h3>Examples</h3>
 
-      <p>Prod build</p>
-      <pre><code># prod build, watch `src/` and rebuild on change
+    <p>Prod build</p>
+    <pre><code># prod build, watch `src/` and rebuild on change
 bundla -w
 
 # prod build once, then serve the output
@@ -156,8 +157,8 @@ bundla -ws
 # custom source and output directories
 bundla --src client/src --dist client/dist</code></pre>
 
-      <p>Dev build</p>
-      <pre><code># dev build of `src/` into `dev/` with sourcemaps
+    <p>Dev build</p>
+    <pre><code># dev build of `src/` into `dev/` with sourcemaps
 bundla -d
 
 # watch: rebuild `dev/` on change, no server
@@ -167,10 +168,25 @@ bundla -dw
 bundla -dws
 bundla -dws --port 9000 --open</code></pre>
 
-      <h2 id="library">Library</h2>
+    <h2 id="library">Library</h2>
+    <h3>Feature flag</h3>
+    <p>
+      The <code>serve</code> feature (on by default):
+    </p>
+    <ul>
+      <li>is required for <code>serve</code>, <code>watch_serve</code>,
+        <code>Server</code>, and <code>ServerConfig</code>,
+      </li>
+      <li>is not required for <code>build</code>, <code>watch</code>, <code>Watch</code>,
+        <code>WatchLog</code>, and <code>BuildOptions</code>.
+      </li>
+    </ul>
+    <p>To build or watch without the server (and drop the axum dependency):</p>
+    <pre><code>bundla = { version = "0.4", default-features = false }</code></pre>
 
-      <h3>1. Serve only</h3>
-      <pre><code>use std::net::IpAddr;
+
+    <h3>1. Serve only</h3>
+    <pre><code>use std::net::IpAddr;
 use bundla::{ServerConfig, serve};
 
 let config = ServerConfig {
@@ -183,59 +199,59 @@ let config = ServerConfig {
 
 let server = serve(&amp;config).await?;
 server.run().await?;</code></pre>
-      <p>
-        <code>ServerConfig</code> and <code>Server</code> are re-exported from
-        <a href="https://crates.io/crates/webadev">webadev</a>.
-      </p>
-      <p>
-        Use <code>0</code> as <code>config.port</code> to let the OS pick a
-        free port (visible in <code>server.url</code>).
-      </p>
+    <p>
+      <code>ServerConfig</code> and <code>Server</code> are re-exported from
+      <a href="https://crates.io/crates/webadev">webadev</a>.
+    </p>
+    <p>
+      Use <code>0</code> as <code>config.port</code> to let the OS pick a
+      free port (visible in <code>server.url</code>).
+    </p>
 
-      <h3>2. Prod build</h3>
-      <pre><code>use std::path::Path;
-use bundla::{BundlerOptions, bundle};
+    <h3>2. Prod build</h3>
+    <pre><code>use std::path::Path;
+use bundla::{BuildOptions, build};
 
-let warnings = bundle(Path::new("src"), Path::new("dist"), BundlerOptions::PROD).await?;
+let warnings = build(Path::new("src"), Path::new("dist"), BuildOptions::PROD).await?;
 for warning in warnings {
     eprintln!("warning: {warning}");
 }</code></pre>
-      <ul>
-        <li>
-          <code>BundlerOptions::DEV</code>: unminified, with sourcemaps, no
-          hashed filenames.
-        </li>
-        <li>
-          <code>BundlerOptions::PROD</code>: minified, hashed filenames, no
-          sourcemaps.
-        </li>
-        <li>
-          <code>Ok</code> returns the warnings collected during the build
-          (unreadable assets, non-module scripts, bundler warnings); displaying
-          them is up to you.
-        </li>
-      </ul>
-      <p>Build a custom profile from the flags:</p>
-      <pre><code>BundlerOptions {
+    <ul>
+      <li>
+        <code>BuildOptions::DEV</code>: unminified, with sourcemaps, no
+        hashed filenames.
+      </li>
+      <li>
+        <code>BuildOptions::PROD</code>: minified, hashed filenames, no
+        sourcemaps.
+      </li>
+      <li>
+        <code>Ok</code> returns the warnings collected during the build
+        (unreadable assets, non-module scripts, bundler warnings); displaying
+        them is up to you.
+      </li>
+    </ul>
+    <p>Build a custom profile from the flags:</p>
+    <pre><code>BuildOptions {
     minify: true,
     sourcemap: true,
     hash: false,
 }</code></pre>
 
-      <h3>3. Watch and rebuild, headless</h3>
-      <pre><code>use std::path::Path;
+    <h3>3. Watch and rebuild, headless</h3>
+    <pre><code>use std::path::Path;
 use tokio::sync::broadcast;
-use bundla::{BundlerOptions, WatchLog, Watch, watch};
+use bundla::{BuildOptions, WatchLog, Watch, watch};
 
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
-// bundles `src/` into `dev/` on startup, then on every change
+// build `src/` into `dev/` on startup, then on every change
 // no server, no port, no browser
-let watcher = watch(Path::new("src"), Path::new("dev"), BundlerOptions::DEV, tx_log).await?;
+let watcher = watch(Path::new("src"), Path::new("dev"), BuildOptions::DEV, tx_log).await?;
 
 // runtime logs are reported on your broadcast channel:
 // - `WatchLog::Change(ReloadType, Vec&lt;PathBuf&gt;)`: source changes from the watcher
-// - `WatchLog::Warn(String)`: bundle warnings
+// - `WatchLog::Warn(String)`: build warnings
 // - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
 
 tokio::spawn(async move {
@@ -245,17 +261,17 @@ tokio::spawn(async move {
 });
 
 watcher.run().await?; // rebuilds until the future is dropped</code></pre>
-      <p>
-        <code>Watch</code> is the handle returned by <code>watch</code>;
-        <code>watch_serve</code> below runs the same rebuild loop behind the
-        server.
-      </p>
+    <p>
+      <code>Watch</code> is the handle returned by <code>watch</code>;
+      <code>watch_serve</code> below runs the same rebuild loop behind the
+      server.
+    </p>
 
-      <h3>4. Dev build with live reload server</h3>
-      <pre><code>use std::net::IpAddr;
+    <h3>4. Dev build with live reload server</h3>
+    <pre><code>use std::net::IpAddr;
 use std::path::Path;
 use tokio::sync::broadcast;
-use bundla::{BundlerOptions, WatchLog, ServerConfig, watch_serve};
+use bundla::{BuildOptions, WatchLog, ServerConfig, watch_serve};
 
 let config = ServerConfig {
     dir: "dev".into(),
@@ -267,12 +283,12 @@ let config = ServerConfig {
 
 // runtime logs are reported on your broadcast channel:
 // - `WatchLog::Change(ReloadType, Vec&lt;PathBuf&gt;)`: source changes from the watcher
-// - `WatchLog::Warn(String)`: bundle warnings
+// - `WatchLog::Warn(String)`: build warnings
 // - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
-// `BundlerOptions::DEV` for the dev loop
-let server = watch_serve(Path::new("src"), &amp;config, BundlerOptions::DEV, tx_log).await?;
+// `BuildOptions::DEV` for the dev loop
+let server = watch_serve(Path::new("src"), &amp;config, BuildOptions::DEV, tx_log).await?;
 println!("Starting development server at {}", server.url);
 
 tokio::spawn(async move {
@@ -283,8 +299,8 @@ tokio::spawn(async move {
 
 server.run().await?; // blocks until shutdown</code></pre>
 
-      <h2 id="local-installation">Local installation</h2>
-      <pre><code># clone the repo
+    <h2 id="local-installation">Local installation</h2>
+    <pre><code># clone the repo
 git clone https://github.com/francoisromain/bundla.git
 cd bundla
 
@@ -306,15 +322,16 @@ bundla
 # update later after source changes
 cargo install --path . --locked --force</code></pre>
 
-      <h2 id="version-history">Version history</h2>
-      <button id="load-commits" type="button">Load commits</button>
-      <ul id="commit-list"></ul>
-    </main>
+    <h2 id="version-history">Version history</h2>
+    <button id="load-commits" type="button">Load commits</button>
+    <ul id="commit-list"></ul>
+  </main>
 
-    <footer>
-      <p>&copy; 2026</p>
-    </footer>
+  <footer>
+    <p>&copy; 2026</p>
+  </footer>
 
-    <script type="module" src="./scripts/scripts.js"></script>
-  </body>
+  <script type="module" src="./scripts/scripts.js"></script>
+</body>
+
 </html>

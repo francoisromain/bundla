@@ -4962,9 +4962,9 @@ dependencies = [
 
 [[package]]
 name = "webadev"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55c1d2f33132cc8803472f84f628c1187ab305cb019a359470f4329656d68bc9"
+checksum = "8e8ffc87339cad9c8ab93d32795692803ec36a0d7a56383393d145630621ca63"
 dependencies = [
  "axum",
  "clap",

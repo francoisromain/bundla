@@ -1,14 +1,24 @@
-use std::{fs, net::IpAddr, path::Path, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 use tempfile::tempdir;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
     sync::broadcast,
     time::{sleep, timeout},
 };
 
-use bundla::{BundlerOptions, ServerConfig, WatchLog, watch, watch_serve};
+use bundla::{BuildOptions, WatchLog, watch};
+
+#[cfg(feature = "serve")]
+use std::net::IpAddr;
+
+#[cfg(feature = "serve")]
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
+
+#[cfg(feature = "serve")]
+use bundla::{ServerConfig, watch_serve};
 
 fn page(body: &str) -> String {
     format!("<html><body>{body}</body></html>")
@@ -38,7 +48,7 @@ async fn wait_contains(path: &Path, needle: &str) {
 }
 
 #[tokio::test]
-async fn watch_bundles_on_startup_and_rebundles_on_change() {
+async fn watch_builds_on_startup_and_rebuilds_on_change() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     let dist = dir.path().join("dev");
@@ -46,9 +56,7 @@ async fn watch_bundles_on_startup_and_rebundles_on_change() {
     fs::write(src.join("index.html"), page("v1")).unwrap();
 
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
-    let watcher = watch(&src, &dist, BundlerOptions::DEV, tx_log)
-        .await
-        .unwrap();
+    let watcher = watch(&src, &dist, BuildOptions::DEV, tx_log).await.unwrap();
 
     // bundled once on startup, before `watch` returns
     assert!(read(&dist.join("index.html")).contains("v1"));
@@ -77,7 +85,7 @@ async fn watch_bundles_on_startup_and_rebundles_on_change() {
 }
 
 #[tokio::test]
-async fn watch_keeps_previous_output_on_failed_rebundle() {
+async fn watch_keeps_previous_output_on_failed_rebuild() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     let dist = dir.path().join("dev");
@@ -85,9 +93,7 @@ async fn watch_keeps_previous_output_on_failed_rebundle() {
     fs::write(src.join("index.html"), page("v1")).unwrap();
 
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
-    let watcher = watch(&src, &dist, BundlerOptions::DEV, tx_log)
-        .await
-        .unwrap();
+    let watcher = watch(&src, &dist, BuildOptions::DEV, tx_log).await.unwrap();
     let handle = tokio::spawn(watcher.run());
 
     // remove the only page: the rebundle fails
@@ -119,7 +125,7 @@ async fn watch_missing_src_errs() {
     let dist = dir.path().join("dev");
 
     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
-    let err = watch(&src, &dist, BundlerOptions::DEV, tx_log)
+    let err = watch(&src, &dist, BuildOptions::DEV, tx_log)
         .await
         .unwrap_err();
     assert!(err.contains("failed to watch"), "got: {err}");
@@ -129,8 +135,9 @@ async fn watch_missing_src_errs() {
 // hot-reload re-fetches the stylesheet href held by the page, and the
 // rebuild serves a new hashed name — the stale href would 404. The
 // wire format is `event: <name>` on the SSE stream.
+#[cfg(feature = "serve")]
 #[tokio::test]
-async fn dev_hashed_css_change_reloads_full_page() {
+async fn watch_serve_hashed_css_change_reloads_full_page() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     fs::create_dir_all(src.join("styles")).unwrap();
@@ -151,7 +158,7 @@ async fn dev_hashed_css_change_reloads_full_page() {
     };
 
     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
-    let server = watch_serve(&src, &config, BundlerOptions::PROD, tx_log)
+    let server = watch_serve(&src, &config, BuildOptions::PROD, tx_log)
         .await
         .unwrap();
 

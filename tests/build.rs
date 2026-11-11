@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use tempfile::tempdir;
 
-use bundla::{BundlerOptions, bundle};
+use bundla::{BuildOptions, build};
 
 fn write_files(root: &Path, files: &[(&str, &str)]) {
     for (rel, content) in files {
@@ -61,7 +61,7 @@ async fn static_assets_are_copied_in_prod() {
     fs::write(src.join("img/logo.png"), LOGO_PNG).unwrap();
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
+    build(&src, &dist, BuildOptions::PROD).await.unwrap();
 
     assert_eq!(
         fs::read(src.join("img/logo.png")).unwrap(),
@@ -107,7 +107,7 @@ async fn static_assets_are_copied_in_prod() {
 }
 
 #[tokio::test]
-async fn dev_bundle_mirrors_and_rewrites() {
+async fn dev_build_mirrors_and_rewrites() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(
@@ -120,7 +120,7 @@ async fn dev_bundle_mirrors_and_rewrites() {
     );
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::DEV).await.unwrap();
+    build(&src, &dist, BuildOptions::DEV).await.unwrap();
 
     let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
     assert!(out_html.contains("./styles/main.css"));
@@ -135,7 +135,7 @@ async fn dev_bundle_mirrors_and_rewrites() {
 // included. The live-reload script is serve-time only (patched into HTTP
 // responses by webadev, never written on disk).
 #[tokio::test]
-async fn dev_bundle_writes_no_reload_script() {
+async fn dev_build_writes_no_reload_script() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(
@@ -148,7 +148,7 @@ async fn dev_bundle_writes_no_reload_script() {
     );
 
     let dist = dir.path().join("dev");
-    let warnings = bundle(&src, &dist, BundlerOptions::DEV).await.unwrap();
+    let warnings = build(&src, &dist, BuildOptions::DEV).await.unwrap();
     assert!(warnings.is_empty(), "got: {warnings:?}");
 
     let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -166,7 +166,7 @@ async fn dev_bundle_writes_no_reload_script() {
 }
 
 #[tokio::test]
-async fn prod_bundle_minifies_and_hashes() {
+async fn prod_build_minifies_and_hashes() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(
@@ -179,7 +179,7 @@ async fn prod_bundle_minifies_and_hashes() {
     );
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
+    build(&src, &dist, BuildOptions::PROD).await.unwrap();
 
     let styles = dir_names(&dist.join("styles"));
     assert_eq!(
@@ -230,7 +230,7 @@ async fn shared_asset_bundled_once_across_pages() {
     );
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
+    build(&src, &dist, BuildOptions::PROD).await.unwrap();
 
     let styles = dir_names(&dist.join("styles"));
     assert_eq!(
@@ -273,7 +273,7 @@ async fn css_import_bundled_and_rewritten() {
     );
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
+    build(&src, &dist, BuildOptions::PROD).await.unwrap();
 
     let main_names: Vec<String> = dir_names(&dist.join("styles"))
         .into_iter()
@@ -313,34 +313,34 @@ async fn css_import_bundled_and_rewritten() {
 }
 
 #[tokio::test]
-async fn bundle_errors_no_html_pages() {
+async fn build_errors_no_html_pages() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(&src, &[("styles/main.css", "body{}\n")]);
     let dist = dir.path().join("dist");
 
-    let err = bundle(&src, &dist, BundlerOptions::DEV).await.unwrap_err();
+    let err = build(&src, &dist, BuildOptions::DEV).await.unwrap_err();
     assert!(err.contains("no .html pages"), "got: {err}");
 }
 
 #[tokio::test]
-async fn bundle_errors_missing_src() {
+async fn build_errors_missing_src() {
     let dir = tempdir().unwrap();
     let dist = dir.path().join("dist");
 
-    let err = bundle(&dir.path().join("missing"), &dist, BundlerOptions::DEV)
+    let err = build(&dir.path().join("missing"), &dist, BuildOptions::DEV)
         .await
         .unwrap_err();
     assert!(err.contains("source directory not found"), "got: {err}");
 }
 
 #[tokio::test]
-async fn bundle_errors_dist_equal_src() {
+async fn build_errors_dist_equal_src() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(&src, &[("index.html", PAGE)]);
 
-    let err = bundle(&src, &src, BundlerOptions::DEV).await.unwrap_err();
+    let err = build(&src, &src, BuildOptions::DEV).await.unwrap_err();
     assert!(
         err.contains("must not be the source directory"),
         "got: {err}"
@@ -348,12 +348,12 @@ async fn bundle_errors_dist_equal_src() {
 }
 
 #[tokio::test]
-async fn bundle_errors_dist_inside_src() {
+async fn build_errors_dist_inside_src() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(&src, &[("index.html", PAGE)]);
 
-    let err = bundle(&src, &src.join("out"), BundlerOptions::DEV)
+    let err = build(&src, &src.join("out"), BuildOptions::DEV)
         .await
         .unwrap_err();
     assert!(err.contains("must not be inside"), "got: {err}");

@@ -9,7 +9,7 @@ use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, Sty
 use parcel_sourcemap::SourceMap;
 
 use super::{
-    super::{BundlerOptions, path},
+    super::{BuildOptions, path},
     dist_mkdir, file_name_output_format, file_stem_extract,
 };
 
@@ -18,7 +18,7 @@ pub fn css_bundle(
     src: &Path,
     dist: &Path,
     dir: &Path,
-    options: BundlerOptions,
+    options: BuildOptions,
     cache: &mut HashMap<PathBuf, String>,
 ) -> Result<String, String> {
     let mut stack: Vec<PathBuf> = Vec::new();
@@ -32,7 +32,7 @@ fn css_bundle_rec(
     src: &Path,
     dist: &Path,
     dir: &Path,
-    options: BundlerOptions,
+    options: BuildOptions,
     cache: &mut HashMap<PathBuf, String>,
     stack: &mut Vec<PathBuf>,
 ) -> Result<String, String> {
@@ -103,7 +103,7 @@ fn css_imports_rewrite(
     asset_path: &Path,
     src: &Path,
     dist: &Path,
-    options: BundlerOptions,
+    options: BuildOptions,
     cache: &mut HashMap<PathBuf, String>,
     stack: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
@@ -149,7 +149,7 @@ fn css_imports_rewrite(
                     src,
                     dist,
                     &imported_dir,
-                    BundlerOptions {
+                    BuildOptions {
                         hash: true,
                         ..options
                     },
@@ -186,7 +186,7 @@ mod tests {
         src: &Path,
         dist: &Path,
         dir: &Path,
-        options: BundlerOptions,
+        options: BuildOptions,
     ) -> Result<String, String> {
         css_bundle(source, src, dist, dir, options, &mut HashMap::new())
     }
@@ -217,7 +217,7 @@ mod tests {
             &src,
             &src.join("out"),
             Path::new("styles"),
-            BundlerOptions::DEV,
+            BuildOptions::DEV,
         )
         .unwrap_err();
         assert!(err.contains("css parse error"), "got: {err}");
@@ -234,7 +234,7 @@ mod tests {
             &src,
             &src.join("out"),
             Path::new(""),
-            BundlerOptions::DEV,
+            BuildOptions::DEV,
         )
         .unwrap_err();
         assert!(err.contains("css source unreadable"), "got: {err}");
@@ -248,14 +248,8 @@ mod tests {
         write_css(&source, "body { color: red; }\n");
         let dist = src.join("out");
 
-        let name = bundle_css(
-            &source,
-            &src,
-            &dist,
-            Path::new("styles"),
-            BundlerOptions::DEV,
-        )
-        .unwrap();
+        let name =
+            bundle_css(&source, &src, &dist, Path::new("styles"), BuildOptions::DEV).unwrap();
         assert_eq!(name, "theme.css");
         let code = fs::read_to_string(dist.join("styles/theme.css")).unwrap();
         assert!(
@@ -272,7 +266,7 @@ mod tests {
         let source = src.join("styles/theme.css");
         write_css(&source, "body { color: red; }\n");
         let dist = src.join("out");
-        let options = BundlerOptions {
+        let options = BuildOptions {
             minify: true,
             sourcemap: true,
             hash: true,
@@ -312,7 +306,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
         )
         .unwrap();
         assert!(
@@ -345,7 +339,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
         )
         .unwrap();
 
@@ -389,7 +383,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BundlerOptions::DEV,
+            BuildOptions::DEV,
         )
         .unwrap();
 
@@ -433,7 +427,7 @@ mod tests {
             &src,
             &first_dist,
             Path::new("styles"),
-            BundlerOptions::DEV,
+            BuildOptions::DEV,
         )
         .unwrap();
         let first_resets: Vec<String> = list_names(&first_dist.join("styles/sub"))
@@ -456,7 +450,7 @@ mod tests {
             &src,
             &second_dist,
             Path::new("styles"),
-            BundlerOptions::DEV,
+            BuildOptions::DEV,
         )
         .unwrap();
         let second_resets: Vec<String> = list_names(&second_dist.join("styles/sub"))
@@ -502,7 +496,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
             &mut cache,
         )
         .unwrap();
@@ -511,7 +505,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
             &mut cache,
         )
         .unwrap();
@@ -552,7 +546,7 @@ mod tests {
             &src,
             &dist,
             Path::new(""),
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
         )
         .unwrap_err();
         assert!(err.contains("css import cycle"), "got: {err}");
@@ -573,7 +567,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BundlerOptions::PROD,
+            BuildOptions::PROD,
         )
         .unwrap_err();
         assert!(err.contains("asset not found"), "got: {err}");
