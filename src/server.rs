@@ -1,21 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use tokio::sync::broadcast::{self, Sender};
-use webadev::{Config, ReloadType, Server, watch};
+use webadev::{Config, Server};
 
-use crate::{BundlerOptions, bundle};
-
-/// A runtime log line from the dev server, sent on the caller's broadcast
-/// channel so the library never prints directly.
-#[derive(Clone, Debug)]
-pub enum DevLog {
-    /// A source change detected by the watcher, before the rebundle.
-    Change(ReloadType, Vec<PathBuf>),
-    /// A non-fatal bundle warning (unreadable asset skipped, etc.).
-    Warn(String),
-    /// A rebundle failure during watch; the browser keeps the previous bundle.
-    Error(String),
-}
+use crate::{
+    BundlerOptions,
+    watch::{WatchLog, watch_setup},
+};
 
 /// Serve `config.dir` without watching or bundling.
 ///
@@ -55,8 +46,19 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
         .map_err(|err| format!("bind error: {err}"))
 }
 
-/// Watch `src`, bundle it into `config.dir` on startup and on every change,
-/// and serve it with live reload. Runtime logs are reported on `tx_log`.
+/// Watch `src`,
+/// bundle it into `config.dir` on startup and on every change,
+/// serve it with live reload.
+/// `options` selects the build profile
+/// (`BundlerOptions::DEV` for the usual dev loop).
+/// Runtime logs are reported on `tx_log`.
+///
+/// This is the headless [`watch`](crate::watch) with a server on
+/// top: on every successful rebundle the connected browsers reload
+/// (hot-reload for css when filenames are stable, full page reload
+/// otherwise — hashed filenames change on rebuild), and a failed
+/// rebundle keeps the previous bundle. The reload script is served,
+/// never written to the output files.
 ///
 /// # Examples
 ///
@@ -64,7 +66,7 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
 /// use std::net::IpAddr;
 /// use std::path::Path;
 ///
-/// use bundla::{ServerConfig, dev};
+/// use bundla::{BundlerOptions, ServerConfig, watch_serve};
 /// use tempfile::tempdir;
 ///
 /// #[tokio::main]
@@ -89,7 +91,9 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
 ///     };
 ///
 ///     let (tx_log, _rx_log) = tokio::sync::broadcast::channel(100);
-///     let server = dev(Path::new(&src), &config, tx_log).await.unwrap();
+///     let server = watch_serve(Path::new(&src), &config, BundlerOptions::DEV, tx_log)
+///         .await
+///         .unwrap();
 ///     let url = server.url.clone();
 ///     let handle = tokio::spawn(async move { server.run().await });
 ///
@@ -100,49 +104,25 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
 ///     handle.abort();
 /// }
 /// ```
-pub async fn dev(src: &Path, config: &Config, tx_log: Sender<DevLog>) -> Result<Server, String> {
-    // Src-change events: when the user updates files in the src directory
-    let (tx_src, mut rx_src) = broadcast::channel(100);
+pub async fn watch_serve(
+    src: &Path,
+    config: &Config,
+    options: BundlerOptions,
+    tx_log: Sender<WatchLog>,
+) -> Result<Server, String> {
     // Dist-change events: when a bundle updates files in the dist directory
     // triggers a browser reload
     let (tx_dist, _rx_dist) = broadcast::channel(100);
 
-    watch(tx_src.clone(), src)
-        .map_err(|err| format!("failed to watch {}: {err}", src.display()))?;
-
-    // Bundle once on startup
-    bundle(src, &config.dir, BundlerOptions::DEV)
-        .await
-        .map_err(|err| format!("bundle error: {err}"))?
-        .into_iter()
-        .for_each(|warning| {
-            let _ = tx_log.send(DevLog::Warn(warning));
-        });
+    // Watch `src`, bundle once on startup
+    let watcher = watch_setup(src, &config.dir, options, tx_log, Some(tx_dist.clone())).await?;
 
     let server = Server::bind(tx_dist.clone(), config.clone())
         .await
         .map_err(|err| format!("bind error: {err}"))?;
 
-    let src_clone = src.to_path_buf();
-    let dist_clone = config.dir.clone();
-    let tx_dist_clone = tx_dist.clone();
-    tokio::spawn(async move {
-        while let Ok((reload_type, paths)) = rx_src.recv().await {
-            let _ = tx_log.send(DevLog::Change(reload_type, paths.clone()));
-            match bundle(&src_clone, &dist_clone, BundlerOptions::DEV).await {
-                Ok(warnings) => {
-                    warnings.into_iter().for_each(|warning| {
-                        let _ = tx_log.send(DevLog::Warn(warning));
-                    });
-                    let _ = tx_dist_clone.send((reload_type, paths));
-                }
-                Err(err) => {
-                    let _ = tx_log.send(DevLog::Error(format!("bundle error: {err}")));
-                    // Keep the browser on the previous bundle
-                }
-            }
-        }
-    });
+    // Rebundle on every change, then reload the browser
+    tokio::spawn(watcher.run());
 
     Ok(server)
 }

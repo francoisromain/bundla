@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::Options;
+use super::BundlerOptions;
 
 use css::css_bundle;
 use js::js_bundle;
@@ -20,7 +20,7 @@ pub async fn asset_process(
     asset_path: &Path,
     src: &Path,
     dist: &Path,
-    options: Options,
+    options: BundlerOptions,
     cache: &mut HashMap<PathBuf, String>,
     warnings: &mut Vec<String>,
 ) -> Result<String, String> {
@@ -107,7 +107,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::super::Options;
+    use super::super::BundlerOptions;
     use super::*;
 
     #[test]
@@ -184,7 +184,7 @@ mod tests {
             &src.join("THEME.CSS"),
             &src,
             &dist,
-            Options::DEV,
+            BundlerOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -208,7 +208,7 @@ mod tests {
             &styles.join("theme.css"),
             &src,
             &dist,
-            Options::DEV,
+            BundlerOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -232,7 +232,7 @@ mod tests {
             &scripts.join("app.js"),
             &src,
             &dist,
-            Options::DEV,
+            BundlerOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -254,7 +254,7 @@ mod tests {
             &src.join("image.png"),
             &src,
             &dist,
-            Options::DEV,
+            BundlerOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -272,7 +272,7 @@ mod tests {
         fs::create_dir_all(&scripts).unwrap();
         fs::write(scripts.join("app.js"), "console.log('hi');\n").unwrap();
 
-        let options = Options {
+        let options = BundlerOptions {
             minify: true,
             sourcemap: true,
             hash: true,

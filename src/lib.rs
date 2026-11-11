@@ -1,6 +1,7 @@
 //! Bundle HTML, CSS, and JS/TS:
-//! - development mode with live-reload,
-//! - release mode with minification and hashed filenames.
+//! - prod build with minification and hashed filenames,
+//! - dev build with sourcemaps,
+//! - watch-and-rebuild, headless or served with live reload.
 //!
 //! See the [README](https://crates.io/crates/bundla)
 //! for features, CLI, and library usage.
@@ -18,14 +19,12 @@ pub use webadev::Server;
 
 mod bundler;
 
-pub use bundler::Options as BundlerOptions;
+pub use bundler::{BundlerOptions, bundle};
 
-pub use bundler::bundle;
+mod watch;
+
+pub use watch::{Watch, WatchLog, watch};
 
 mod server;
 
-pub use server::DevLog;
-
-pub use server::dev;
-
-pub use server::serve;
+pub use server::{serve, watch_serve};

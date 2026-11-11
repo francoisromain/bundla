@@ -18,7 +18,7 @@ use static_assets::static_asset_copy;
 
 /// Bundle options for the HTML, CSS, JS/TS output.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Options {
+pub struct BundlerOptions {
     /// Minify the css, js, and output html.
     pub minify: bool,
     /// Emit `.map` sourcemap files next to the output.
@@ -27,7 +27,7 @@ pub struct Options {
     pub hash: bool,
 }
 
-impl Options {
+impl BundlerOptions {
     /// Unminified, sourcemapped, no-hash filenames.
     ///
     /// ```
@@ -37,7 +37,7 @@ impl Options {
     /// assert!(BundlerOptions::DEV.sourcemap);
     /// assert!(!BundlerOptions::DEV.hash);
     /// ```
-    pub const DEV: Options = Options {
+    pub const DEV: BundlerOptions = BundlerOptions {
         minify: false,
         sourcemap: true,
         hash: false,
@@ -48,11 +48,11 @@ impl Options {
     /// ```
     /// use bundla::BundlerOptions;
     ///
-    /// assert!(BundlerOptions::RELEASE.minify);
-    /// assert!(!BundlerOptions::RELEASE.sourcemap);
-    /// assert!(BundlerOptions::RELEASE.hash);
+    /// assert!(BundlerOptions::PROD.minify);
+    /// assert!(!BundlerOptions::PROD.sourcemap);
+    /// assert!(BundlerOptions::PROD.hash);
     /// ```
-    pub const RELEASE: Options = Options {
+    pub const PROD: BundlerOptions = BundlerOptions {
         minify: true,
         sourcemap: false,
         hash: true,
@@ -98,7 +98,7 @@ impl Options {
 ///     )
 ///     .unwrap();
 ///
-///     let warnings = bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+///     let warnings = bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
 ///     assert!(warnings.is_empty(), "got: {warnings:?}");
 ///
 ///     let html = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -106,7 +106,11 @@ impl Options {
 ///     assert!(html.contains("app-"), "expected a hashed js name: {html}");
 /// }
 /// ```
-pub async fn bundle(src: &Path, dist: &Path, options: Options) -> Result<Vec<String>, String> {
+pub async fn bundle(
+    src: &Path,
+    dist: &Path,
+    options: BundlerOptions,
+) -> Result<Vec<String>, String> {
     if !src.is_dir() {
         return Err(format!("source directory not found: {}", src.display()));
     }
@@ -165,7 +169,7 @@ async fn page_list_bundle(
     page_path_list: &[PathBuf],
     src: &Path,
     dist: &Path,
-    options: Options,
+    options: BundlerOptions,
     warnings: &mut Vec<String>,
 ) -> Result<(), String> {
     fs::create_dir_all(dist)
@@ -205,7 +209,7 @@ async fn page_bundle(
     page_path: &Path,
     src: &Path,
     dist: &Path,
-    options: Options,
+    options: BundlerOptions,
     cache: &mut HashMap<PathBuf, String>,
     warnings: &mut Vec<String>,
 ) -> Result<(), String> {
@@ -314,7 +318,7 @@ mod tests {
             &src.join("missing.html"),
             &src,
             &dist,
-            Options::RELEASE,
+            BundlerOptions::PROD,
             &mut cache,
             &mut vec![],
         )
@@ -324,7 +328,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn page_bundle_release_minifies_and_hashes() {
+    async fn page_bundle_prod_minifies_and_hashes() {
         let dir = tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();
         let src = root.join("src");
@@ -345,7 +349,7 @@ mod tests {
             &src.join("index.html"),
             &src,
             &dist,
-            Options::RELEASE,
+            BundlerOptions::PROD,
             &mut cache,
             &mut vec![],
         )

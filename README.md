@@ -9,22 +9,20 @@
 </p>
 
 Bundle HTML, CSS, and JS/TS:
-- development mode with live-reload,
-- release mode with minification and hashed filenames.
+- prod build with minification and hashed filenames,
+- dev build with sourcemaps,
+- watch option to rebuild on change,
+- serve option.
 
-Built with rust on the [webadev](https://crates.io/crates/webadev) library.
+Built with Rust on the [webadev](https://crates.io/crates/webadev) library.
 
-## Development mode (default)
+## Production build (default)
 
-- Watch `src` and re-bundle on every change.
-- Output to `dev` and serve.
-- Hot-reload after CSS edits, full page reload for HTML and JS/TS.
+Builds `src/` into `dist/`. Files are minified, with hashed filenames.
 
-## Release mode
+## Development build
 
-- Bundle, minify, hash filenames from `src`.
-- Output to `dist`.
-- Option: serve the `dist` directory.
+Builds `src/` into `dev/`. Files are unminified with sourcemaps.
 
 ## Conventions
 
@@ -33,46 +31,63 @@ Built with rust on the [webadev](https://crates.io/crates/webadev) library.
 - The source layout is mirrored in the output and `?query`/`#fragment` suffixes on references are preserved.
 - Relative css `url()` and css-to-css `@import` targets are bundled and rewritten; remote and absolute URLs are left for the browser to resolve.
 - Everything else under `src` is copied as-is (static assets).
+- The live-reload script is serve-time only (patched into HTTP responses, never written to `dev` or `dist`).
 
 ## CLI
 
 ```bash
 cargo install bundla
 
-# bundle `src/`, serve `dev/`
+# build `src/` into `dist/` (minified, hashed)
 bundla
 ```
 
 ### Options
 
-- `--release`: bundle, minify, hash filenames, to output dir (default: `dist`).
-- `--serve`: serve the output directory (default: `dist`) without watching or bundling.
-- `--src <dir>`: assets directory to watch and bundle (default: `src`).
-- `--dist <dir>`: output or serving directory (default to `dev/` or `dist/` with `--release`/`--serve`).
-- `--port <n>` default: random free port.
-- `--ip <addr>` default 127.0.0.1 (use `0.0.0.0` to access from other devices).
+- `--dev` / `-d`: dev build, unminified with sourcemaps, output dir `dev/`.
+- `--watch` / `-w`: rebuild on every change to `src/`.
+- `--serve` / `-s`: build once, then serve the output directory.
+- `--src <dir>`: directory to bundle (default: `src`).
+- `--dist <dir>`: output directory (default: `dist/`, or `dev/` with `--dev`).
+
+#### Server options (require `--serve`)
+
+- `--port <n>`: port to listen on (default: random free port).
+- `--ip <addr>`: IP address to bind to (default 127.0.0.1, use `0.0.0.0` to access from other devices).
 - `--open`: open the page in the browser on start.
-- `--index <file>`: file served by default for the root and directory requests (default: `index.html`; no flag + no index file → 404 at `/`).
+- `--index <file>`: file served by default for the root and directory requests (default: `index.html`).
 - `--header`: additional HTTP header on every response (repeatable), e.g. `--header "Access-Control-Allow-Origin: *"`.
 
 ### Examples
 
+Prod build
+
 ```bash
-# dev server (watch `src/` → bundle → serve `dev/` with live reload
-bundla
-bundla --port 9000 --open
+# prod build, watch `src` and rebuild on change
+bundla -w
 
-# release build of `src/` to `dist/`
-bundla --release
+# prod build once, then serve the output
+bundla -s
 
-# serve an existing `dist/` without bundling
-bundla --serve
+# prod build, watch and serve (live reload; css changes reload the full page)
+bundla -ws
 
-# release build, then serve it
-bundla --release --serve
+# custom source and output directories
+bundla --src client/src --dist client/dist
+```
 
-# bundle and serve dist/ in dev mode
-bundla --dist dist   
+Dev build
+
+```bash
+# dev build of `src/` into `dev/` with sourcemaps
+bundla -d
+
+# watch: rebuild `dev/` on change, no server
+bundla -dw
+
+# development loop: watch `src/`, rebuild into `dev/`, serve with live reload
+bundla -dws
+bundla -dws --port 9000 --open
 ```
 
 ## Library
@@ -80,6 +95,7 @@ bundla --dist dist
 ### 1. Serve only
 
 ```rust
+use std::net::IpAddr;
 use bundla::{ServerConfig, serve};
 
 let config = ServerConfig {
@@ -98,21 +114,20 @@ server.run().await?;
 
 Use `0` as `config.port` to let the OS pick a free port (visible in `server.url`).
 
-### 2. Bundle
+### 2. Prod build
 
 ```rust
 use std::path::Path;
-
 use bundla::{BundlerOptions, bundle};
 
-let warnings = bundle(Path::new("src"), Path::new("dist"), BundlerOptions::RELEASE).await?;
+let warnings = bundle(Path::new("src"), Path::new("dist"), BundlerOptions::PROD).await?;
 for warning in warnings {
     eprintln!("warning: {warning}");
 }
 ```
 
-- `BundlerOptions::DEV` (default): unminified, with sourcemaps, no hashed filenames.
-- `BundlerOptions::RELEASE`: minified, hashed filenames, no sourcemaps.
+- `BundlerOptions::DEV`: unminified, with sourcemaps, no hashed filenames.
+- `BundlerOptions::PROD`: minified, hashed filenames, no sourcemaps.
 - `Ok` returns the warnings collected during the build (unreadable assets, non-module scripts, bundler warnings); displaying them is up to you.
 
 Build a custom profile from the flags:
@@ -125,14 +140,42 @@ BundlerOptions {
 }
 ```
 
-### 3. Dev server with live reload
+### 3. Watch and rebuild, headless
+
+```rust
+use std::path::Path;
+use tokio::sync::broadcast;
+use bundla::{BundlerOptions, WatchLog, Watch, watch};
+
+let (tx_log, mut rx_log) = broadcast::channel(100);
+
+// bundles `src/` into `dev/` on startup, then on every change
+// no server, no port, no browser
+let watcher = watch(Path::new("src"), Path::new("dev"), BundlerOptions::DEV, tx_log).await?;
+
+// runtime logs are reported on your broadcast channel:
+// - `WatchLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
+// - `WatchLog::Warn(String)`: bundle warnings
+// - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
+
+tokio::spawn(async move {
+    while let Ok(log) = rx_log.recv().await {
+        eprintln!("log: {log:?}");
+    }
+});
+
+watcher.run().await?; // rebuilds until the future is dropped
+```
+
+`Watch` is the handle returned by `watch`; `watch_serve` below runs the same rebuild loop behind the server.
+
+### 4. Dev build with live reload server
 
 ```rust
 use std::net::IpAddr;
 use std::path::Path;
-
-use bundla::{DevLog, ServerConfig, dev};
 use tokio::sync::broadcast;
+use bundla::{BundlerOptions, WatchLog, ServerConfig, watch_serve};
 
 let config = ServerConfig {
     dir: "dev".into(),
@@ -143,11 +186,13 @@ let config = ServerConfig {
 };
 
 // runtime logs are reported on your broadcast channel:
-// - `DevLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
-// - `DevLog::Warn(String)`: bundle warnings
-// - `DevLog::Error(String)`: rebundle failures during watch (previous bundle is kept)
+// - `WatchLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
+// - `WatchLog::Warn(String)`: bundle warnings
+// - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
 let (tx_log, mut rx_log) = broadcast::channel(100);
-let server = dev(Path::new("src"), &config, tx_log).await?; // bundles, watches, serves
+
+// `BundlerOptions::DEV` for the dev loop
+let server = watch_serve(Path::new("src"), &config, BundlerOptions::DEV, tx_log).await?;
 println!("Starting development server at {}", server.url);
 
 tokio::spawn(async move {
@@ -169,19 +214,18 @@ cd bundla
 # build the project
 cargo build --release
 
-# in the `client` directory, bundle `src/`, serve `dev/`
-./target/release/bundla --src client/src --dist client/dev --header "Access-Control-Allow-Origin: *"
+# in the `client` directory, watch `client/src`, serve `client/dev`
+./target/release/bundla -dws --src client/src --dist client/dev --header "Access-Control-Allow-Origin: *"
 
 # install globally from the local package
 # compiles and copies the binary to `~/.cargo/bin/bundla`
 cargo install --path . --locked
 
 # use from anywhere
-# from the current directory, bundle `src/`, serve `dev/` on 127.0.0.1:<resolved> (random free port)
+# from the current directory, build `src/` into `dist/`
 cd ~/some/project
-bundla           
+bundla
 
 # update later after source changes
 cargo install --path . --locked --force
 ```
-

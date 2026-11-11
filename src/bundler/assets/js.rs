@@ -1,8 +1,11 @@
 use std::{fs, path::Path};
 
-use rolldown::{Bundler, BundlerOptions, InputItem, OutputFormat, RawMinifyOptions, SourceMapType};
+use rolldown::{
+    Bundler, BundlerOptions as RolldownBundlerOptions, InputItem, OutputFormat, RawMinifyOptions,
+    SourceMapType,
+};
 
-use super::{super::Options, dist_mkdir, file_name_output_format, file_stem_extract};
+use super::{super::BundlerOptions, dist_mkdir, file_name_output_format, file_stem_extract};
 
 pub async fn js_bundle(
     source: &Path,
@@ -10,7 +13,7 @@ pub async fn js_bundle(
     rel: &Path,
     dist: &Path,
     dir: &Path,
-    options: Options,
+    options: BundlerOptions,
     warnings: &mut Vec<String>,
 ) -> Result<String, String> {
     let stem = file_stem_extract(source, "scripts");
@@ -18,7 +21,7 @@ pub async fn js_bundle(
         .to_str()
         .ok_or_else(|| format!("path is not valid utf-8: {}", rel.display()))?;
 
-    let mut bundler = Bundler::new(BundlerOptions {
+    let mut bundler = Bundler::new(RolldownBundlerOptions {
         input: Some(vec![InputItem {
             name: Some(stem.clone()),
             import: import.to_string(),
@@ -27,7 +30,7 @@ pub async fn js_bundle(
         format: Some(OutputFormat::Esm),
         minify: Some(RawMinifyOptions::Bool(options.minify)),
         sourcemap: options.sourcemap.then_some(SourceMapType::File),
-        ..BundlerOptions::default()
+        ..RolldownBundlerOptions::default()
     })
     .map_err(|err| format!("bundler init error: {err}"))?;
 
@@ -64,17 +67,12 @@ pub async fn js_bundle(
             // In hashed mode only the entry's own map is renamed to match the
             // entry; secondary chunk maps keep their rolldown names and their
             // chunks' `sourceMappingURL` comments stay valid untouched.
-            let is_entry_map = options.hash
-                && js_name.is_some()
-                && entry_orig
-                    .as_deref()
-                    .is_some_and(|orig| map_name == format!("{orig}.map"));
-            if is_entry_map {
-                fs::write(
-                    dist_dir.join(format!("{}.map", js_name.as_deref().unwrap())),
-                    item.content_as_bytes(),
-                )
-                .map_err(|err| format!("js sourcemap write error: {err}"))?;
+            if let (Some(js), Some(orig)) = (js_name.as_deref(), entry_orig.as_deref())
+                && options.hash
+                && map_name == format!("{orig}.map")
+            {
+                fs::write(dist_dir.join(format!("{js}.map")), item.content_as_bytes())
+                    .map_err(|err| format!("js sourcemap write error: {err}"))?;
                 continue;
             }
             fs::write(dist_dir.join(map_name), item.content_as_bytes())
@@ -186,7 +184,7 @@ mod tests {
             Path::new("scripts/app.js"),
             &src.join("out"),
             Path::new("scripts"),
-            Options::DEV,
+            BundlerOptions::DEV,
             &mut vec![],
         )
         .await
@@ -210,7 +208,7 @@ mod tests {
             rel,
             &src.join("out"),
             Path::new(""),
-            Options::DEV,
+            BundlerOptions::DEV,
             &mut vec![],
         )
         .await
@@ -219,7 +217,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn js_release_hashes_without_map() {
+    async fn js_prod_hashes_without_map() {
         let dir = tempdir().unwrap();
         let src = fs::canonicalize(dir.path()).unwrap();
         let source = src.join("scripts/app.js");
@@ -232,7 +230,7 @@ mod tests {
             Path::new("scripts/app.js"),
             &dist,
             Path::new("scripts"),
-            Options::RELEASE,
+            BundlerOptions::PROD,
             &mut vec![],
         )
         .await

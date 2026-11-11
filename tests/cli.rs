@@ -1,4 +1,13 @@
-use std::process::{Command, Output};
+use std::{
+    fs,
+    io::{BufRead, BufReader},
+    path::Path,
+    process::{ChildStdout, Command, Output, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
+
+use tempfile::tempdir;
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_bundla"))
@@ -25,28 +34,6 @@ fn version_exits_zero() {
 }
 
 #[test]
-fn release_open_without_serve_fails() {
-    let out = run(&["--release", "--open"]);
-    assert!(!out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("--open requires a running server"),
-        "got: {stderr}"
-    );
-}
-
-#[test]
-fn release_header_without_serve_fails() {
-    let out = run(&["--release", "--header", "X-Engine: bundla"]);
-    assert!(!out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("--header requires a running server"),
-        "got: {stderr}"
-    );
-}
-
-#[test]
 fn help_documents_random_port_default() {
     let out = run(&["--help"]);
     assert!(out.status.success());
@@ -56,11 +43,295 @@ fn help_documents_random_port_default() {
 
 #[test]
 fn invalid_port_rejected() {
-    let out = run(&["--port", "99999"]);
+    let out = run(&["-s", "--port", "99999"]);
     assert_eq!(out.status.code(), Some(2), "clap parse errors exit 2");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains("invalid value") || stderr.contains("error:"),
         "got: {stderr}"
     );
+}
+
+// Server-only flags are rejected at parse time without --serve
+#[test]
+fn server_flags_require_serve() {
+    for flag in [
+        vec!["--open"],
+        vec!["--header", "X-Engine: bundla"],
+        vec!["--port", "9000"],
+        vec!["--ip", "0.0.0.0"],
+        vec!["--index", "home.html"],
+    ] {
+        let out = run(&flag);
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "clap requires errors exit 2: {flag:?}"
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("required arguments were not provided"),
+            "got: {stderr}"
+        );
+        assert!(stderr.contains("--serve"), "got: {stderr}");
+    }
+}
+
+// Poll until `path` exists and contains `needle`, or give up on timeout
+fn wait_contains(path: &Path, needle: &str, timeout: Duration) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if let Ok(text) = fs::read_to_string(path)
+            && text.contains(needle)
+        {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+// Read child stdout lines until the `Serving <url>` line
+fn serving_url(stdout: ChildStdout) -> String {
+    for line in BufReader::new(stdout).lines() {
+        let line = line.unwrap();
+        if let Some(url) = line.strip_prefix("Serving ") {
+            return url.to_string();
+        }
+    }
+    panic!("child exited before printing its serving url");
+}
+
+// The single hashed css file under `styles`
+fn hashed_css_name(styles: &Path) -> String {
+    fs::read_dir(styles)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .find(|n| n.ends_with(".css"))
+        .expect("a css output in styles")
+}
+
+fn fixture(dir: &Path) {
+    let src = dir.join("src");
+    fs::create_dir_all(src.join("styles")).unwrap();
+    fs::write(
+        src.join("index.html"),
+        r#"<html><head><link rel="stylesheet" href="./styles/main.css" /></head><body>v1</body></html>"#,
+    )
+    .unwrap();
+    fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+}
+
+// Bare `bundla`: prod build, hashed filenames, then exit
+#[test]
+fn bare_builds_prod() {
+    let dir = tempdir().unwrap();
+    fixture(dir.path());
+    let dist = dir.path().join("out");
+
+    let src_arg = dir.path().join("src").to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let out = run(&["--src", &src_arg, "--dist", &dist_arg]);
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("bundled"), "got: {stdout}");
+
+    // prod profile: hashed css, no sourcemap
+    let css = hashed_css_name(&dist.join("styles"));
+    assert!(css.starts_with("main-"), "got: {css}");
+    assert!(!dist.join("styles/main.css.map").exists());
+    let html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(html.contains(&css), "got: {html}");
+}
+
+// `-d`: dev build, unhashed filenames with sourcemaps, then exit
+#[test]
+fn dev_builds_dev() {
+    let dir = tempdir().unwrap();
+    fixture(dir.path());
+    let dist = dir.path().join("out");
+
+    let src_arg = dir.path().join("src").to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let out = run(&["-d", "--src", &src_arg, "--dist", &dist_arg]);
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("bundled"), "got: {stdout}");
+
+    // dev profile: unhashed css + sourcemap
+    assert_eq!(hashed_css_name(&dist.join("styles")), "main.css");
+    assert!(dist.join("styles/main.css.map").is_file());
+    let html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(html.contains("./styles/main.css"), "got: {html}");
+}
+
+// Headless, end to end: `-dw` bundles on startup, rebuilds on change,
+// and writes clean files (no reload script injection)
+#[test]
+fn dev_watch_rebundles_without_injection() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), "<html><body>v1</body></html>").unwrap();
+    let dist = dir.path().join("out");
+    let out_html = dist.join("index.html");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let mut child = bin()
+        .args(["-dw", "--src", &src_arg, "--dist", &dist_arg])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    assert!(
+        wait_contains(&out_html, "v1", Duration::from_secs(60)),
+        "initial bundle missing"
+    );
+
+    fs::write(src.join("index.html"), "<html><body>v2</body></html>").unwrap();
+    assert!(
+        wait_contains(&out_html, "v2", Duration::from_secs(60)),
+        "rebundle after change missing"
+    );
+
+    // nothing injected into the written files: no reload script
+    let html = fs::read_to_string(&out_html).unwrap();
+    assert!(!html.contains("EventSource"), "got: {html}");
+    assert!(!html.contains("livereload"), "got: {html}");
+    assert_eq!(html.matches("<script").count(), 0, "got: {html}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+// `-w` keeps hashing while rebuilding headless
+#[test]
+fn watch_hashes_on_rebundle() {
+    let dir = tempdir().unwrap();
+    fixture(dir.path());
+    let dist = dir.path().join("out");
+    let styles_dir = dist.join("styles");
+    let src = dir.path().join("src");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let mut child = bin()
+        .args(["-w", "--src", &src_arg, "--dist", &dist_arg])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    assert!(
+        wait_contains(&dist.join("index.html"), "v1", Duration::from_secs(60)),
+        "initial bundle missing"
+    );
+    let first_css = hashed_css_name(&styles_dir);
+    assert!(first_css.starts_with("main-"), "got: {first_css}");
+
+    // css edit: the content hash must change
+    fs::write(src.join("styles/main.css"), "body { color: red; }\n").unwrap();
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(60) && hashed_css_name(&styles_dir) == first_css {
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_ne!(
+        hashed_css_name(&styles_dir),
+        first_css,
+        "rebundle after css change missing"
+    );
+
+    // nothing injected into the written files: no reload script
+    let html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(!html.contains("EventSource"), "got: {html}");
+    assert!(!html.contains("livereload"), "got: {html}");
+    assert_eq!(html.matches("<script").count(), 0, "got: {html}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+// `-s`: build once, then serve the output statically
+#[tokio::test]
+async fn serve_builds_then_serves() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), "<html><body>v1</body></html>").unwrap();
+    let dist = dir.path().join("out");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let mut child = bin()
+        .args(["-s", "--src", &src_arg, "--dist", &dist_arg])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let url = serving_url(child.stdout.take().unwrap());
+
+    // the build ran before the server started, and the files stay clean
+    let on_disk = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(on_disk.contains("v1"));
+    assert!(!on_disk.contains("livereload"), "got: {on_disk}");
+
+    let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
+    assert!(body.contains("v1"), "got: {body}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+// `-dws` end to end: watch + serve with live reload — the reload script
+// is injected into HTTP responses, never written to the output files
+#[tokio::test]
+async fn watch_serve_reloads_on_change() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), "<html><body>v1</body></html>").unwrap();
+    let dist = dir.path().join("out");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let mut child = bin()
+        .args(["-dws", "--src", &src_arg, "--dist", &dist_arg])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let url = serving_url(child.stdout.take().unwrap());
+
+    // the reload script is served over HTTP…
+    let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
+    assert!(body.contains("v1"), "got: {body}");
+    assert!(body.contains("livereload"), "got: {body}");
+
+    fs::write(src.join("index.html"), "<html><body>v2</body></html>").unwrap();
+
+    // …the change triggers a rebuild, and the server serves the fresh page
+    let reloaded = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
+            if body.contains("v2") {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await;
+    assert!(reloaded.is_ok(), "page not rebuilt and served after change");
+
+    // …but never into the written files
+    let on_disk = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(!on_disk.contains("livereload"), "got: {on_disk}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
 }

@@ -32,7 +32,7 @@ const PAGE: &str = r#"<html><head>
 const LOGO_PNG: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
 
 #[tokio::test]
-async fn static_assets_are_copied_in_release() {
+async fn static_assets_are_copied_in_prod() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(
@@ -61,7 +61,7 @@ async fn static_assets_are_copied_in_release() {
     fs::write(src.join("img/logo.png"), LOGO_PNG).unwrap();
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
 
     assert_eq!(
         fs::read(src.join("img/logo.png")).unwrap(),
@@ -131,8 +131,42 @@ async fn dev_bundle_mirrors_and_rewrites() {
     assert!(dist.join("scripts/app.js.map").is_file());
 }
 
+// Guarantee: nothing is ever injected into the written files, dev mode
+// included. The live-reload script is serve-time only (patched into HTTP
+// responses by webadev, never written on disk).
 #[tokio::test]
-async fn release_bundle_minifies_and_hashes() {
+async fn dev_bundle_writes_no_reload_script() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            ("index.html", PAGE),
+            ("styles/main.css", "body { color: black; }\n"),
+            ("scripts/app.js", "console.log('app');\n"),
+        ],
+    );
+
+    let dist = dir.path().join("dev");
+    let warnings = bundle(&src, &dist, BundlerOptions::DEV).await.unwrap();
+    assert!(warnings.is_empty(), "got: {warnings:?}");
+
+    let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(!out_html.contains("EventSource"), "got: {out_html}");
+    assert!(!out_html.contains("livereload"), "got: {out_html}");
+    assert_eq!(
+        out_html.matches("<script").count(),
+        PAGE.matches("<script").count(),
+        "no script beyond the source ones, got: {out_html}"
+    );
+
+    let out_css = fs::read_to_string(dist.join("styles/main.css")).unwrap();
+    assert!(!out_css.contains("EventSource"), "got: {out_css}");
+    assert!(!out_css.contains("livereload"), "got: {out_css}");
+}
+
+#[tokio::test]
+async fn prod_bundle_minifies_and_hashes() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     write_files(
@@ -145,7 +179,7 @@ async fn release_bundle_minifies_and_hashes() {
     );
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
 
     let styles = dir_names(&dist.join("styles"));
     assert_eq!(
@@ -196,7 +230,7 @@ async fn shared_asset_bundled_once_across_pages() {
     );
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
 
     let styles = dir_names(&dist.join("styles"));
     assert_eq!(
@@ -239,7 +273,7 @@ async fn css_import_bundled_and_rewritten() {
     );
 
     let dist = dir.path().join("dist");
-    bundle(&src, &dist, BundlerOptions::RELEASE).await.unwrap();
+    bundle(&src, &dist, BundlerOptions::PROD).await.unwrap();
 
     let main_names: Vec<String> = dir_names(&dist.join("styles"))
         .into_iter()
