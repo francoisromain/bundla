@@ -21,21 +21,11 @@
       <br />
     </p>
 
-    <p>Bundle HTML, CSS, and JS/TS</p>
-    <ul>
-      <li>prod build with minification and hashed filenames,</li>
-      <li>dev build with sourcemaps,</li>
-      <li>watch option to rebuild on change,</li>
-      <li>serve option.</li>
-    </ul>
-    <p>
-      Built with Rust on the
-      <a href="https://crates.io/crates/webadev">webadev</a> library.
-    </p>
+    <p>Bundle HTML, CSS, and JS/TS for prod or dev with live-reload.</p>
+
     <nav>
       <ul>
-        <li><a href="#production-build">Production build</a></li>
-        <li><a href="#development-build">Development build</a></li>
+        <li><a href="#features">Features</a></li>
         <li><a href="#conventions">Conventions</a></li>
         <li><a href="#cli">CLI</a></li>
         <li><a href="#library">Library</a></li>
@@ -46,16 +36,16 @@
   </header>
 
   <main>
-    <h2 id="production-build">Production build (default)</h2>
+    <h2 id="features">Features</h2>
+    <ul>
+      <li>Prod build <code>src/</code> into <code>dist/</code> with minification and hashed filenames,</li>
+      <li>Dev build <code>src/</code> into <code>dev/</code> unminified with sourcemaps,</li>
+      <li>Option to watch and rebuild on change,</li>
+      <li>Option to serve the bundle.</li>
+    </ul>
     <p>
-      Builds <code>src/</code> into <code>dist/</code>. Files are minified,
-      with hashed filenames.
-    </p>
-
-    <h2 id="development-build">Development build</h2>
-    <p>
-      Builds <code>src/</code> into <code>dev/</code>. Files are unminified
-      with sourcemaps.
+      Built with Rust on the
+      <a href="https://crates.io/crates/webadev">webadev</a> server.
     </p>
 
     <h2 id="conventions">Conventions</h2>
@@ -65,28 +55,29 @@
         mirrored to <code>dev</code>/<code>dist</code>.
       </li>
       <li>
-        <code>&lt;link rel="stylesheet"&gt;</code> and
-        <code>&lt;script type="module"&gt;</code> references are bundled (one
-        output per asset, cached across pages) and rewritten in place;
-        <code>type="module"</code> is required for scripts.
+        <code>&lt;link rel="stylesheet"&gt;</code>, css
+        <code>@import</code> and <code>&lt;script type="module"&gt;</code>
+        references are bundled (one output per asset, cached across pages) and
+        rewritten in place.
       </li>
+      <li><code>type="module"</code> is required for scripts.</li>
       <li>
-        The source layout is mirrored in the output and
         <code>?query</code>/<code>#fragment</code> suffixes on references are
         preserved.
       </li>
       <li>
-        Relative css <code>url()</code> and css-to-css
-        <code>@import</code> targets are bundled and rewritten; remote and
-        absolute URLs are left for the browser to resolve.
+        By default, remote and root-relative URLs are left unchanged and
+        resolved by the browser.
+      </li>
+      <li>
+        Option (<code>--base</code>) to bundle and rewrite root-relative references starting with the base prefix.
       </li>
       <li>
         Everything else under <code>src</code> is copied as-is (static
-        assets).
+        assets), preserving the relative layout.
       </li>
       <li>
-        The live-reload script is serve-time only (patched into HTTP
-        responses, never written to <code>dev</code> or <code>dist</code>).
+        The live-reload script is patched into HTTP responses, never written to <code>dev</code> or <code>dist</code>.
       </li>
     </ul>
 
@@ -111,16 +102,25 @@ bundla</code></pre>
         output directory.
       </li>
       <li>
-        <code>--src &lt;dir&gt;</code>: directory to build (default:
+        <code>--src &lt;dir&gt;</code>: source directory (default:
         <code>src</code>).
       </li>
       <li>
         <code>--dist &lt;dir&gt;</code>: output directory (default:
         <code>dist/</code>, or <code>dev/</code> with <code>--dev</code>).
       </li>
+      <li>
+        <code>--base &lt;path&gt;</code>: URL prefix where the output is served
+        (default: none; must start with <code>/</code>; e.g. <code>/app</code>;
+        normalized: trailing <code>/</code> removed, invalid segments rejected).
+        Root-relative references starting with this base are bundled and
+        rewritten with the prefix. With <code>--serve</code>, the built-in
+        server serves the output under this prefix too. Use <code>--base</code>
+        for subpath hosting (GitHub Pages project sites, reverse proxies).
+      </li>
     </ul>
 
-    <h4>Server options (require --serve)</h4>
+    <h4>Server config (requires <code>--serve</code>)</h4>
     <ul>
       <li>
         <code>--port &lt;n&gt;</code>: port to listen on (default: random
@@ -154,8 +154,14 @@ bundla -s
 # prod build, watch and serve (live reload; css changes reload the full page)
 bundla -ws
 
-# custom source and output directories
-bundla --src client/src --dist client/dist</code></pre>
+# prod build with custom source and output directories
+bundla --src client/src --dist client/dist
+
+# prod build with root-relative references starting with /app (e.g. `/app/styles/main.css`)
+bundla --base /app
+
+# same, served under /app
+bundla -s --base /app</code></pre>
 
     <p>Dev build</p>
     <pre><code># dev build of `src/` into `dev/` with sourcemaps
@@ -169,21 +175,6 @@ bundla -dws
 bundla -dws --port 9000 --open</code></pre>
 
     <h2 id="library">Library</h2>
-    <h3>Feature flag</h3>
-    <p>
-      The <code>serve</code> feature (on by default):
-    </p>
-    <ul>
-      <li>is required for <code>serve</code>, <code>watch_serve</code>,
-        <code>Server</code>, and <code>ServerConfig</code>,
-      </li>
-      <li>is not required for <code>build</code>, <code>watch</code>, <code>Watch</code>,
-        <code>WatchLog</code>, and <code>BuildOptions</code>.
-      </li>
-    </ul>
-    <p>To build or watch without the server (and drop the axum dependency):</p>
-    <pre><code>bundla = { version = "0.4", default-features = false }</code></pre>
-
 
     <h3>1. Serve only</h3>
     <pre><code>use std::net::IpAddr;
@@ -195,6 +186,7 @@ let config = ServerConfig {
     port: 8080,
     headers: vec![],
     index: "index.html".into(),
+    base: String::new(),
 };
 
 let server = serve(&amp;config).await?;
@@ -204,18 +196,28 @@ server.run().await?;</code></pre>
       <a href="https://crates.io/crates/webadev">webadev</a>.
     </p>
     <p>
+      Set <code>config.base</code> to a URL prefix (e.g. <code>"/app"</code>)
+      to serve under it; the empty string serves at the root.
+    </p>
+    <p>
       Use <code>0</code> as <code>config.port</code> to let the OS pick a
       free port (visible in <code>server.url</code>).
     </p>
 
-    <h3>2. Prod build</h3>
+    <h3>2. Build</h3>
     <pre><code>use std::path::Path;
 use bundla::{BuildOptions, build};
 
-let warnings = build(Path::new("src"), Path::new("dist"), BuildOptions::PROD).await?;
+let warnings = build(Path::new("src"), Path::new("dist"), &amp;BuildOptions::PROD).await?;
 for warning in warnings {
     eprintln!("warning: {warning}");
 }</code></pre>
+    <p>
+      On success, <code>build</code> returns the warnings collected during the
+      build (unreadable assets, non-module scripts, bundler warnings);
+      displaying them is up to you.
+    </p>
+    <p><code>BuildOptions</code> presets:</p>
     <ul>
       <li>
         <code>BuildOptions::DEV</code>: unminified, with sourcemaps, no
@@ -225,18 +227,19 @@ for warning in warnings {
         <code>BuildOptions::PROD</code>: minified, hashed filenames, no
         sourcemaps.
       </li>
-      <li>
-        <code>Ok</code> returns the warnings collected during the build
-        (unreadable assets, non-module scripts, bundler warnings); displaying
-        them is up to you.
-      </li>
     </ul>
-    <p>Build a custom profile from the flags:</p>
-    <pre><code>BuildOptions {
+    <p>Combine a preset with a base:</p>
+    <pre><code>let options = BuildOptions {
+    base: Some("/app".into()),
+    ..BuildOptions::DEV
+};</code></pre>
+    <p>Build your own options:</p>
+    <pre><code>let options = BuildOptions {
     minify: true,
     sourcemap: true,
     hash: false,
-}</code></pre>
+    base: None,
+};</code></pre>
 
     <h3>3. Watch and rebuild, headless</h3>
     <pre><code>use std::path::Path;
@@ -245,9 +248,9 @@ use bundla::{BuildOptions, WatchLog, Watch, watch};
 
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
-// build `src/` into `dev/` on startup, then on every change
+// Build `src/` into `dev/` on startup, then on every change
 // no server, no port, no browser
-let watcher = watch(Path::new("src"), Path::new("dev"), BuildOptions::DEV, tx_log).await?;
+let watcher = watch(Path::new("src"), Path::new("dev"), &amp;BuildOptions::DEV, tx_log).await?;
 
 // runtime logs are reported on your broadcast channel:
 // - `WatchLog::Change(ReloadType, Vec&lt;PathBuf&gt;)`: source changes from the watcher
@@ -262,7 +265,7 @@ tokio::spawn(async move {
 
 watcher.run().await?; // rebuilds until the future is dropped</code></pre>
     <p>
-      <code>Watch</code> is the handle returned by <code>watch</code>;
+      <code>Watch</code> is the handle returned by <code>watch</code>.
       <code>watch_serve</code> below runs the same rebuild loop behind the
       server.
     </p>
@@ -279,6 +282,7 @@ let config = ServerConfig {
     port: 8080,
     headers: vec![],
     index: "index.html".into(),
+    base: String::new(),
 };
 
 // runtime logs are reported on your broadcast channel:
@@ -288,7 +292,7 @@ let config = ServerConfig {
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
 // `BuildOptions::DEV` for the dev loop
-let server = watch_serve(Path::new("src"), &amp;config, BuildOptions::DEV, tx_log).await?;
+let server = watch_serve(Path::new("src"), &amp;config, &amp;BuildOptions::DEV, tx_log).await?;
 println!("Starting development server at {}", server.url);
 
 tokio::spawn(async move {
@@ -298,6 +302,29 @@ tokio::spawn(async move {
 });
 
 server.run().await?; // blocks until shutdown</code></pre>
+    <p>
+      The served prefix must match the build prefix. When building and serving
+      manually, pass <code>options.server_base()</code> to
+      <code>ServerConfig.base</code>. This converts the <code>Option</code> to a
+      <code>String</code> and ensures consistency. With <code>watch_serve</code>,
+      <code>config.base</code> is ignored and overwritten by
+      <code>options.base</code> using <code>options.server_base()</code>.
+    </p>
+
+    <h3>Feature flag</h3>
+    <p>
+      The <code>serve</code> feature (on by default):
+    </p>
+    <ul>
+      <li>is required for: <code>serve</code>, <code>watch_serve</code>,
+        <code>Server</code>, and <code>ServerConfig</code>,
+      </li>
+      <li>is not required for: <code>build</code>, <code>watch</code>, <code>Watch</code>,
+        <code>WatchLog</code>, and <code>BuildOptions</code>.
+      </li>
+    </ul>
+    <p>To build or watch without the server (and drop the axum dependency):</p>
+    <pre><code>bundla = { version = "0.5", default-features = false }</code></pre>
 
     <h2 id="local-installation">Local installation</h2>
     <pre><code># clone the repo
@@ -307,7 +334,7 @@ cd bundla
 # build the project
 cargo build --release
 
-# in the `client` directory, watch `client/src`, serve `client/dev`
+# watch `client/src`, serve `client/dev`
 ./target/release/bundla -dws --src client/src --dist client/dev --header "Access-Control-Allow-Origin: *"
 
 # install globally from the local package

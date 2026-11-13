@@ -56,7 +56,9 @@ async fn watch_builds_on_startup_and_rebuilds_on_change() {
     fs::write(src.join("index.html"), page("v1")).unwrap();
 
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
-    let watcher = watch(&src, &dist, BuildOptions::DEV, tx_log).await.unwrap();
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log)
+        .await
+        .unwrap();
 
     // bundled once on startup, before `watch` returns
     assert!(read(&dist.join("index.html")).contains("v1"));
@@ -93,7 +95,9 @@ async fn watch_keeps_previous_output_on_failed_rebuild() {
     fs::write(src.join("index.html"), page("v1")).unwrap();
 
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
-    let watcher = watch(&src, &dist, BuildOptions::DEV, tx_log).await.unwrap();
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log)
+        .await
+        .unwrap();
     let handle = tokio::spawn(watcher.run());
 
     // remove the only page: the rebundle fails
@@ -112,7 +116,7 @@ async fn watch_keeps_previous_output_on_failed_rebuild() {
         "expected a WatchLog::Error on the log channel"
     );
 
-    // the previous bundle is kept
+    // the previous build is kept
     assert!(read(&dist.join("index.html")).contains("v1"));
 
     handle.abort();
@@ -125,7 +129,7 @@ async fn watch_missing_src_errs() {
     let dist = dir.path().join("dev");
 
     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
-    let err = watch(&src, &dist, BuildOptions::DEV, tx_log)
+    let err = watch(&src, &dist, &BuildOptions::DEV, tx_log)
         .await
         .unwrap_err();
     assert!(err.contains("failed to watch"), "got: {err}");
@@ -155,10 +159,11 @@ async fn watch_serve_hashed_css_change_reloads_full_page() {
         port: 0,
         headers: vec![],
         index: "index.html".into(),
+        base: String::new(),
     };
 
     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
-    let server = watch_serve(&src, &config, BuildOptions::PROD, tx_log)
+    let server = watch_serve(&src, &config, &BuildOptions::PROD, tx_log)
         .await
         .unwrap();
 
@@ -220,6 +225,73 @@ async fn watch_serve_hashed_css_change_reloads_full_page() {
 
     // full page reload, not css hot-reload
     assert_eq!(event, "page", "hashed css must reload the full page");
+
+    handle.abort();
+}
+
+// `watch_serve` serves under the build base: the config base is left empty
+// on purpose, the served prefix must follow `BuildOptions::base`.
+#[cfg(feature = "serve")]
+#[tokio::test]
+async fn watch_serve_serves_under_build_base() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(src.join("styles")).unwrap();
+    fs::write(
+        src.join("index.html"),
+        "<html><head><link rel=\"stylesheet\" href=\"/app/styles/main.css\"></head>\
+         <body>v1</body></html>",
+    )
+    .unwrap();
+    fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+
+    let config = ServerConfig {
+        dir: dir.path().join("dist"),
+        ip: IpAddr::from([127, 0, 0, 1]),
+        port: 0,
+        headers: vec![],
+        index: "index.html".into(),
+        base: String::new(),
+    };
+    let options = BuildOptions {
+        base: Some("/app".into()),
+        ..BuildOptions::PROD
+    };
+
+    let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
+    let server = watch_serve(&src, &config, &options, tx_log).await.unwrap();
+    assert!(server.url.ends_with("/app"), "got: {}", server.url);
+
+    let url = server.url.clone();
+    let handle = tokio::spawn(async move { server.run().await });
+
+    let body = reqwest::get(format!("{url}/"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(body.contains(">v1"), "got: {body}");
+    assert!(
+        body.contains("EventSource('/app/livereload')"),
+        "got: {body}"
+    );
+
+    // the page is bundled and rewritten with the base prefix
+    let hashed_css = fs::read_dir(config.dir.join("styles"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+        .find(|name| name.ends_with(".css"))
+        .expect("a hashed css output");
+    assert!(
+        body.contains(&format!("/app/styles/{hashed_css}")),
+        "got: {body}"
+    );
+
+    // nothing injected into the written files
+    let on_disk = read(&config.dir.join("index.html"));
+    assert!(on_disk.contains(&format!("/app/styles/{hashed_css}")));
+    assert!(!on_disk.contains("livereload"), "got: {on_disk}");
 
     handle.abort();
 }

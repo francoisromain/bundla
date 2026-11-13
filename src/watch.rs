@@ -65,7 +65,7 @@ pub struct Watch {
 ///
 ///     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
 ///     let dist = dir.path().join("dev");
-///     let watcher = watch(&src, &dist, BuildOptions::DEV, tx_log).await.unwrap();
+///     let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log).await.unwrap();
 ///
 ///     // `src` is built once before `watch` returns
 ///     assert!(std::fs::read_to_string(dist.join("index.html")).unwrap().contains("v1"));
@@ -79,23 +79,24 @@ pub struct Watch {
 pub async fn watch(
     src: &Path,
     dist: &Path,
-    options: BuildOptions,
+    options: &BuildOptions,
     tx_log: Sender<WatchLog>,
 ) -> Result<Watch, String> {
     watch_setup(src, dist, options, tx_log, None).await
 }
 
-// Shared by the headless `watch` and the server `watch_serve`:
+// Shared by `watch` and the server `watch_serve`:
 // - start the filesystem watcher on `src`
 // - build once on startup
 // - keep the change receiver for the rebuild loop (`Watch::run`)
 //
-// `tx_dist` forwards dist-change events to the server (browser
-// reload); `None` when headless.
+// `tx_dist`:
+// - forwards dist-change events to the server (browser reload),
+// - `None` without a server.
 pub(crate) async fn watch_setup(
     src: &Path,
     dist: &Path,
-    options: BuildOptions,
+    options: &BuildOptions,
     tx_log: Sender<WatchLog>,
     tx_dist: Option<Sender<(ReloadType, Vec<PathBuf>)>>,
 ) -> Result<Watch, String> {
@@ -118,7 +119,7 @@ pub(crate) async fn watch_setup(
         rx_src,
         src: src.to_path_buf(),
         dist: dist.to_path_buf(),
-        options,
+        options: options.clone(),
         tx_log,
         tx_dist,
     })
@@ -138,7 +139,7 @@ impl Watch {
                 .tx_log
                 .send(WatchLog::Change(reload_type, paths.clone()));
 
-            match build(&self.src, &self.dist, self.options).await {
+            match build(&self.src, &self.dist, &self.options).await {
                 Ok(warnings) => {
                     warnings.into_iter().for_each(|warning| {
                         let _ = self.tx_log.send(WatchLog::Warn(warning));
@@ -146,7 +147,7 @@ impl Watch {
 
                     // Successful rebuild: reload the browser when serving
                     if let Some(tx_dist) = &self.tx_dist {
-                        let _ = tx_dist.send((browser_reload(reload_type, self.options), paths));
+                        let _ = tx_dist.send((browser_reload(reload_type, &self.options), paths));
                     }
                 }
                 Err(err) => {
@@ -164,12 +165,11 @@ impl Watch {
 
 // How a successful rebuild tells connected browsers to reload.
 //
-// Css hot-reload re-fetches the stylesheet href held by the page, so it
-// only works with stable filenames: with hashed filenames the rebuild
-// serves a new name (and the rebuild replaces the whole output), so the
-// stale href would 404 — ask for a full page reload instead, which
-// picks up the fresh hashed references.
-fn browser_reload(reload_type: ReloadType, options: BuildOptions) -> ReloadType {
+// Css hot-reload re-fetches the stylesheet href held by the page.
+// It only works with stable filenames.
+// With hashed filenames the rebuild change the name so the stale href would 404.
+// Ask for a full page reload instead, which picks up the fresh hashed references.
+fn browser_reload(reload_type: ReloadType, options: &BuildOptions) -> ReloadType {
     if options.hash {
         ReloadType::Page
     } else {
@@ -184,11 +184,11 @@ mod tests {
     #[test]
     fn hashed_css_changes_reload_full_page() {
         assert_eq!(
-            browser_reload(ReloadType::Css, BuildOptions::PROD),
+            browser_reload(ReloadType::Css, &BuildOptions::PROD),
             ReloadType::Page
         );
         assert_eq!(
-            browser_reload(ReloadType::Page, BuildOptions::PROD),
+            browser_reload(ReloadType::Page, &BuildOptions::PROD),
             ReloadType::Page
         );
     }
@@ -196,11 +196,11 @@ mod tests {
     #[test]
     fn unhashed_css_changes_hot_reload() {
         assert_eq!(
-            browser_reload(ReloadType::Css, BuildOptions::DEV),
+            browser_reload(ReloadType::Css, &BuildOptions::DEV),
             ReloadType::Css
         );
         assert_eq!(
-            browser_reload(ReloadType::Page, BuildOptions::DEV),
+            browser_reload(ReloadType::Page, &BuildOptions::DEV),
             ReloadType::Page
         );
     }

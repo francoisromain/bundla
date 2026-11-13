@@ -20,7 +20,7 @@ pub async fn asset_process(
     asset_path: &Path,
     src: &Path,
     dist: &Path,
-    options: BuildOptions,
+    options: &BuildOptions,
     cache: &mut HashMap<PathBuf, String>,
     warnings: &mut Vec<String>,
 ) -> Result<String, String> {
@@ -36,7 +36,9 @@ pub async fn asset_process(
         .parent()
         .unwrap_or_else(|| Path::new(""));
     let file_name = match ext.as_str() {
-        e if CSS_EXTENSIONS.contains(&e) => css_bundle(asset_path, src, dist, dir, options, cache)?,
+        e if CSS_EXTENSIONS.contains(&e) => {
+            css_bundle(asset_path, src, dist, dir, options, cache, warnings)?
+        }
         e if JS_EXTENSIONS.contains(&e) => {
             js_bundle(
                 asset_path,
@@ -184,7 +186,7 @@ mod tests {
             &src.join("THEME.CSS"),
             &src,
             &dist,
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -208,7 +210,7 @@ mod tests {
             &styles.join("theme.css"),
             &src,
             &dist,
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -232,7 +234,7 @@ mod tests {
             &scripts.join("app.js"),
             &src,
             &dist,
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -254,7 +256,7 @@ mod tests {
             &src.join("image.png"),
             &src,
             &dist,
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
             &mut HashMap::new(),
             &mut vec![],
         )
@@ -276,12 +278,13 @@ mod tests {
             minify: true,
             sourcemap: true,
             hash: true,
+            base: None,
         };
         let name = asset_process(
             &scripts.join("app.js"),
             &src,
             &dist,
-            options,
+            &options,
             &mut HashMap::new(),
             &mut vec![],
         )

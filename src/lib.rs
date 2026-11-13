@@ -1,10 +1,11 @@
-//! Bundle HTML, CSS, and JS/TS:
-//! - prod build with minification and hashed filenames,
-//! - dev build with sourcemaps,
-//! - watch-and-rebuild, headless or served with live reload.
+//! Bundle HTML, CSS, and JS/TS for prod or dev with live-reload.
+//! - Prod build `src/` into `dist/` with minification and hashed filenames,
+//! - Dev build `src/` into `dev/` with sourcemaps,
+//! - Option to watch and rebuild on change,
+//! - Option to serve the bundle.
 //!
 //! Serving is optional: the `serve` feature is on by default, and
-//! `default-features = false` builds without the axum server stack.
+//! `default-features = false` builds without the axum dependency.
 //!
 //! See the [README](https://crates.io/crates/bundla)
 //! for features, CLI, and library usage.

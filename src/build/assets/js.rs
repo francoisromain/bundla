@@ -10,7 +10,7 @@ pub async fn js_bundle(
     rel: &Path,
     dist: &Path,
     dir: &Path,
-    options: BuildOptions,
+    options: &BuildOptions,
     warnings: &mut Vec<String>,
 ) -> Result<String, String> {
     let stem = file_stem_extract(source, "scripts");
@@ -181,7 +181,7 @@ mod tests {
             Path::new("scripts/app.js"),
             &src.join("out"),
             Path::new("scripts"),
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
             &mut vec![],
         )
         .await
@@ -205,7 +205,7 @@ mod tests {
             rel,
             &src.join("out"),
             Path::new(""),
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
             &mut vec![],
         )
         .await
@@ -227,7 +227,7 @@ mod tests {
             Path::new("scripts/app.js"),
             &dist,
             Path::new("scripts"),
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
             &mut vec![],
         )
         .await

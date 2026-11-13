@@ -13,27 +13,33 @@ use bundla::{BuildOptions, Server, ServerConfig, WatchLog, build, serve, watch, 
     version
 )]
 struct Args {
-    /// Directory to bundle.
+    /// Source directory
     #[arg(long, default_value = "src")]
     src: PathBuf,
 
-    /// Output directory (default: dist/, or dev/ with --dev).
+    /// Output directory (default: dist/, or dev/ with --dev)
     #[arg(long)]
     dist: Option<PathBuf>,
 
-    /// Dev build: unminified with sourcemaps (default output: dev/).
+    /// URL prefix where the output is served (e.g. `/app`; must start with `/`)
+    /// Root-relative references starting with this base
+    /// are bundled and rewritten with the prefix
+    #[arg(long, value_parser = base_parse)]
+    base: Option<String>,
+
+    /// Dev build: unminified with sourcemaps (default output: dev/)
     #[arg(short, long)]
     dev: bool,
 
-    /// Watch `src` and rebuild on every change.
+    /// Watch `src` and rebuild on every change
     #[arg(short, long)]
     watch: bool,
 
-    /// Serve the output directory, built once first (with --watch: live reload).
+    /// Serve the output directory, built once first (live reload with --watch)
     #[arg(short, long)]
     serve: bool,
 
-    /// Port to listen on (default: random free port).
+    /// Server port (default: random free port)
     #[arg(
         short,
         long,
@@ -43,19 +49,19 @@ struct Args {
     )]
     port: u16,
 
-    /// IP address to bind to.
+    /// Server IP address
     #[arg(short, long, default_value = "127.0.0.1", requires = "serve")]
     ip: IpAddr,
 
-    /// Open the page in the browser on start.
+    /// Open the page in the browser on start
     #[arg(short, long, requires = "serve")]
     open: bool,
 
-    /// File served by default for the root and directory requests.
+    /// File served by default
     #[arg(long, default_value = "index.html", requires = "serve")]
     index: String,
 
-    /// Additional HTTP header on every response (repeatable).
+    /// Additional HTTP header on every response (repeatable)
     #[arg(long = "header", value_name = "NAME: VALUE", requires = "serve")]
     headers: Vec<String>,
 }
@@ -70,23 +76,27 @@ async fn main() {
     }
 }
 
-// `--dev` selects the build profile;
-// `--watch` and `--serve` select the continuations after the build.
+// `--dev` selects the build profile
+// `--watch` and `--serve` select the continuations after the build
 async fn run(args: &Args) -> Result<(), String> {
     let dist = output_dir(args);
-    let options = if args.dev {
+    let profile = if args.dev {
         BuildOptions::DEV
     } else {
         BuildOptions::PROD
     };
+    let options = BuildOptions {
+        base: args.base.clone(),
+        ..profile
+    };
 
     match (args.watch, args.serve) {
         // Build once, then exit
-        (false, false) => build_once(&args.src, &dist, options).await,
+        (false, false) => build_once(&args.src, &dist, &options).await,
         // Rebuild on every change, without serving
         (true, false) => {
             let tx_log = watch_log_channel();
-            let watcher = watch(&args.src, &dist, options, tx_log).await?;
+            let watcher = watch(&args.src, &dist, &options, tx_log).await?;
             println!(
                 "Watching {} — rebuilding into {}",
                 args.src.display(),
@@ -96,7 +106,7 @@ async fn run(args: &Args) -> Result<(), String> {
         }
         // Build once, then serve the output
         (false, true) => {
-            build_once(&args.src, &dist, options).await?;
+            build_once(&args.src, &dist, &options).await?;
             let server = serve(&server_config_build(args, dist)).await?;
             start(server, args.open).await
         }
@@ -106,7 +116,7 @@ async fn run(args: &Args) -> Result<(), String> {
             let server = watch_serve(
                 &args.src,
                 &server_config_build(args, dist.clone()),
-                options,
+                &options,
                 tx_log,
             )
             .await?;
@@ -116,15 +126,15 @@ async fn run(args: &Args) -> Result<(), String> {
     }
 }
 
-// Build once and report the result, shared by the build-first arms.
-async fn build_once(src: &Path, dist: &Path, options: BuildOptions) -> Result<(), String> {
+// Build once and report the result
+async fn build_once(src: &Path, dist: &Path, options: &BuildOptions) -> Result<(), String> {
     let warnings = build(src, dist, options).await?;
     warnings_print(&warnings);
     println!("bundled {}", dist.display());
     Ok(())
 }
 
-// Log channel with a printer task attached, shared by the watch arms.
+// Log channel with a printer task attached
 fn watch_log_channel() -> Sender<WatchLog> {
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
     tokio::spawn(async move {
@@ -142,13 +152,14 @@ fn server_config_build(args: &Args, dist: PathBuf) -> ServerConfig {
         port: args.port,
         headers: args.headers.clone(),
         index: args.index.clone(),
+        base: args.base.clone().unwrap_or_default(),
     }
 }
 
 // The output dir follows the build profile:
-// - dist/ for the prod build (default),
-// - dev/ with --dev.
-// --dist overrides both.
+// - prod build (default): `dist/`,
+// - dev build (--dev): `dev/`.
+// `--dist` option overrides both.
 fn output_dir(args: &Args) -> PathBuf {
     if let Some(dist) = &args.dist {
         return dist.clone();
@@ -159,6 +170,18 @@ fn output_dir(args: &Args) -> PathBuf {
     } else {
         PathBuf::from("dist")
     }
+}
+
+// `--base` must be a non-empty, root-relative path.
+// webadev normalizes it: trailing `/` is stripped, `/` becomes the root,
+// and invalid segments/characters are rejected.
+fn base_parse(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("must not be empty".into());
+    }
+
+    webadev::base_normalize(value)
 }
 
 async fn start(server: Server, open: bool) -> Result<(), String> {
@@ -208,6 +231,7 @@ mod tests {
         Args {
             src: PathBuf::from("src"),
             dist,
+            base: None,
             dev,
             watch,
             serve,
@@ -244,6 +268,58 @@ mod tests {
     fn flags_parse_longs() {
         let parsed = Args::try_parse_from(["bundla", "--dev", "--watch", "--serve"]).unwrap();
         assert!(parsed.dev && parsed.watch && parsed.serve);
+    }
+
+    #[test]
+    fn base_parses_root_relative() {
+        let parsed = Args::try_parse_from(["bundla", "--base", "/app"]).unwrap();
+        assert_eq!(parsed.base.as_deref(), Some("/app"));
+
+        // the site root is a valid base, normalized to the empty prefix
+        let parsed = Args::try_parse_from(["bundla", "--base", "/"]).unwrap();
+        assert_eq!(parsed.base.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn base_normalizes_values() {
+        for (value, expected) in [("/app/", "/app"), (" /app/ ", "/app"), ("/a/b", "/a/b")] {
+            let parsed = Args::try_parse_from(["bundla", "--base", value]).unwrap();
+            assert_eq!(parsed.base.as_deref(), Some(expected), "value: {value:?}");
+        }
+    }
+
+    #[test]
+    fn base_without_serve_parses() {
+        let parsed = Args::try_parse_from(["bundla", "--base", "/app"]).unwrap();
+        assert!(!parsed.serve);
+    }
+
+    #[test]
+    fn base_rejects_relative_or_empty_values() {
+        for value in ["app", "app/", "./app", "", " "] {
+            let err = Args::try_parse_from(["bundla", "--base", value])
+                .err()
+                .expect("expected a relative or empty base to be rejected");
+            assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+        }
+    }
+
+    #[test]
+    fn base_rejects_invalid_values() {
+        for value in [
+            "//app",
+            "/app//x",
+            "/app/../x",
+            "/app/./x",
+            "/app/*",
+            "/a b",
+            "/a%20b",
+        ] {
+            let err = Args::try_parse_from(["bundla", "--base", value])
+                .err()
+                .expect("expected an invalid base to be rejected");
+            assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+        }
     }
 
     // The old --watch × --serve conflict is gone: the combo is the
@@ -338,5 +414,16 @@ mod tests {
         assert_eq!(config.port, 8080);
         assert_eq!(config.headers, vec!["X: Y"]);
         assert_eq!(config.index, "index.html");
+        assert_eq!(config.base, "");
+    }
+
+    #[test]
+    fn server_config_build_maps_base() {
+        let mut parsed = args(false, false, true, None, vec![]);
+        parsed.base = Some("/app".into());
+
+        let config = server_config_build(&parsed, PathBuf::from("dist"));
+
+        assert_eq!(config.base, "/app");
     }
 }

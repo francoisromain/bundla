@@ -1,6 +1,6 @@
 [package]
 name = "bundla"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "Bundle HTML, CSS, and JS/TS: prod build with minification and hashed filenames by default, dev build with sourcemaps, composable watch and serve"
 license = "MIT"
@@ -32,7 +32,7 @@ parcel_sourcemap = "2.1.2"
 rolldown = "1"
 walkdir = "2"
 tokio = { version = "1", features = ["full"] }
-webadev = { version = "0.7.1", default-features = false }
+webadev = { version = "0.10.0", default-features = false }
 
 [dev-dependencies]
 reqwest = "0.13"

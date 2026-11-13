@@ -17,7 +17,7 @@ use path::{asset_ref_path_resolve, asset_ref_rewrite, dist_guard};
 use static_assets::static_asset_copy;
 
 /// Build options for the HTML, CSS, JS/TS output.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct BuildOptions {
     /// Minify the css, js, and output html.
     pub minify: bool,
@@ -25,6 +25,11 @@ pub struct BuildOptions {
     pub sourcemap: bool,
     /// Add a hash to output filenames (`main-<hash>.css`, `main-<hash>.js`).
     pub hash: bool,
+    /// URL prefix where the output is served (e.g. `/app`).
+    /// Root-relative references starting with this base are bundled.
+    /// `None` leaves them for the browser.
+    /// Use `webadev::base_normalize` to validate and normalize user input.
+    pub base: Option<String>,
 }
 
 impl BuildOptions {
@@ -36,11 +41,13 @@ impl BuildOptions {
     /// assert!(!BuildOptions::DEV.minify);
     /// assert!(BuildOptions::DEV.sourcemap);
     /// assert!(!BuildOptions::DEV.hash);
+    /// assert!(BuildOptions::DEV.base.is_none());
     /// ```
     pub const DEV: BuildOptions = BuildOptions {
         minify: false,
         sourcemap: true,
         hash: false,
+        base: None,
     };
 
     /// Minified, hashed filenames, no sourcemaps.
@@ -51,12 +58,23 @@ impl BuildOptions {
     /// assert!(BuildOptions::PROD.minify);
     /// assert!(!BuildOptions::PROD.sourcemap);
     /// assert!(BuildOptions::PROD.hash);
+    /// assert!(BuildOptions::PROD.base.is_none());
     /// ```
     pub const PROD: BuildOptions = BuildOptions {
         minify: true,
         sourcemap: false,
         hash: true,
+        base: None,
     };
+
+    /// URL prefix where the output is served.
+    ///
+    /// Empty when no base is set.
+    /// Pass this to `ServerConfig.base` when building and serving manually.
+    /// `watch_serve` applies it automatically and ignores the config base.
+    pub fn server_base(&self) -> String {
+        self.base.clone().unwrap_or_default()
+    }
 }
 
 /// Build the HTML, CSS, and JS/TS assets from `src` into `dist`.
@@ -99,7 +117,7 @@ impl BuildOptions {
 ///     )
 ///     .unwrap();
 ///
-///     let warnings = build(&src, &dist, BuildOptions::PROD).await.unwrap();
+///     let warnings = build(&src, &dist, &BuildOptions::PROD).await.unwrap();
 ///     assert!(warnings.is_empty(), "got: {warnings:?}");
 ///
 ///     let html = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -107,7 +125,7 @@ impl BuildOptions {
 ///     assert!(html.contains("app-"), "expected a hashed js name: {html}");
 /// }
 /// ```
-pub async fn build(src: &Path, dist: &Path, options: BuildOptions) -> Result<Vec<String>, String> {
+pub async fn build(src: &Path, dist: &Path, options: &BuildOptions) -> Result<Vec<String>, String> {
     if !src.is_dir() {
         return Err(format!("source directory not found: {}", src.display()));
     }
@@ -166,7 +184,7 @@ async fn page_list_bundle(
     page_path_list: &[PathBuf],
     src: &Path,
     dist: &Path,
-    options: BuildOptions,
+    options: &BuildOptions,
     warnings: &mut Vec<String>,
 ) -> Result<(), String> {
     fs::create_dir_all(dist)
@@ -206,7 +224,7 @@ async fn page_bundle(
     page_path: &Path,
     src: &Path,
     dist: &Path,
-    options: BuildOptions,
+    options: &BuildOptions,
     cache: &mut HashMap<PathBuf, String>,
     warnings: &mut Vec<String>,
 ) -> Result<(), String> {
@@ -217,7 +235,9 @@ async fn page_bundle(
 
     let mut asset_ref_rewritten_map: HashMap<String, String> = HashMap::new();
     for asset_ref in asset_refs {
-        if let Some(asset_path) = asset_ref_path_resolve(src, page_path, &asset_ref)? {
+        if let Some(asset_path) =
+            asset_ref_path_resolve(src, page_path, &asset_ref, options.base.as_deref())?
+        {
             let file_name = match cache.get(&asset_path) {
                 Some(file_name) => file_name.clone(),
                 None => {
@@ -230,6 +250,8 @@ async fn page_bundle(
             };
             let asset_ref_rewritten = asset_ref_rewrite(&asset_ref, &file_name);
             asset_ref_rewritten_map.insert(asset_ref, asset_ref_rewritten);
+        } else if options.base.is_none() && path::is_root_relative(asset_ref.trim()) {
+            warnings.push(path::asset_ref_skip_warn(&asset_ref, page_path));
         }
     }
 
@@ -260,6 +282,23 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn server_base_maps_none_and_some() {
+        assert_eq!(BuildOptions::DEV.server_base(), "");
+
+        let app = BuildOptions {
+            base: Some("/app".into()),
+            ..BuildOptions::DEV
+        };
+        assert_eq!(app.server_base(), "/app");
+
+        let root = BuildOptions {
+            base: Some("/".into()),
+            ..BuildOptions::DEV
+        };
+        assert_eq!(root.server_base(), "/");
+    }
 
     #[test]
     fn page_path_list_build_finds_and_sorts_html() {
@@ -315,7 +354,7 @@ mod tests {
             &src.join("missing.html"),
             &src,
             &dist,
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
             &mut cache,
             &mut vec![],
         )
@@ -346,7 +385,7 @@ mod tests {
             &src.join("index.html"),
             &src,
             &dist,
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
             &mut cache,
             &mut vec![],
         )

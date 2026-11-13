@@ -170,6 +170,86 @@ fn dev_builds_dev() {
     assert!(html.contains("./styles/main.css"), "got: {html}");
 }
 
+// `--base`: root-relative references under it are bundled and rewritten
+// with the base prefix
+#[test]
+fn base_builds_root_relative_refs() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(src.join("styles")).unwrap();
+    fs::write(
+        src.join("index.html"),
+        r#"<html><head><link rel="stylesheet" href="/app/styles/main.css" /></head><body>v1</body></html>"#,
+    )
+    .unwrap();
+    fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+    let dist = dir.path().join("out");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let out = run(&["--base", "/app", "--src", &src_arg, "--dist", &dist_arg]);
+
+    assert!(out.status.success());
+    let css = hashed_css_name(&dist.join("styles"));
+    assert!(css.starts_with("main-"), "got: {css}");
+    let html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(html.contains(&format!("/app/styles/{css}")), "got: {html}");
+}
+
+// `--base` must start with `/`
+#[test]
+fn base_rejects_relative_values() {
+    let out = run(&["--base", "app"]);
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("must start with `/`"), "got: {stderr}");
+}
+
+#[test]
+fn base_rejects_empty_value() {
+    let out = run(&["--base", ""]);
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("must not be empty"), "got: {stderr}");
+}
+
+#[test]
+fn base_rejects_invalid_values() {
+    for value in ["//app", "/app//x", "/app/../x", "/app/*"] {
+        let out = run(&["--base", value]);
+        assert_eq!(out.status.code(), Some(2), "value: {value:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("invalid value") || stderr.contains("error:"),
+            "value: {value:?}, got: {stderr}"
+        );
+    }
+}
+
+// `--base /app/` is normalized to `/app` for the build and the server
+#[test]
+fn base_normalizes_trailing_slash() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(src.join("styles")).unwrap();
+    fs::write(
+        src.join("index.html"),
+        r#"<html><head><link rel="stylesheet" href="/app/styles/main.css" /></head><body>v1</body></html>"#,
+    )
+    .unwrap();
+    fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+    let dist = dir.path().join("out");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let out = run(&["--base", "/app/", "--src", &src_arg, "--dist", &dist_arg]);
+
+    assert!(out.status.success());
+    let css = hashed_css_name(&dist.join("styles"));
+    let html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(html.contains(&format!("/app/styles/{css}")), "got: {html}");
+}
+
 // Headless, end to end: `-dw` builds on startup, rebuilds on change,
 // and writes clean files (no reload script injection)
 #[test]
@@ -285,6 +365,83 @@ async fn serve_builds_then_serves() {
 
     let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
     assert!(body.contains("v1"), "got: {body}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+// `-s --base /app`: the build is rewritten under the prefix, and the
+// built-in server honors it (redirect + page + hashed asset)
+#[tokio::test]
+async fn serve_honors_base() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(src.join("styles")).unwrap();
+    fs::write(
+        src.join("index.html"),
+        r#"<html><head><link rel="stylesheet" href="/app/styles/main.css" /></head><body>v1</body></html>"#,
+    )
+    .unwrap();
+    fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+    let dist = dir.path().join("out");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let mut child = bin()
+        .args([
+            "-s", "--base", "/app", "--src", &src_arg, "--dist", &dist_arg,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let url = serving_url(child.stdout.take().unwrap());
+    assert!(url.ends_with("/app"), "got: {url}");
+
+    // the written page is clean and rewritten under the base
+    let css = hashed_css_name(&dist.join("styles"));
+    let html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(html.contains(&format!("/app/styles/{css}")), "got: {html}");
+    assert!(!html.contains("livereload"), "got: {html}");
+
+    // `/app` redirects to `/app/` so relative URLs resolve under the base
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let redirect = client.get(&url).send().await.unwrap();
+    assert_eq!(redirect.status(), 308);
+    assert_eq!(
+        redirect
+            .headers()
+            .get("location")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "/app/"
+    );
+
+    // the page and the hashed asset are served under the base
+    let body = reqwest::get(format!("{url}/"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(body.contains("v1"), "got: {body}");
+    assert!(body.contains(&format!("/app/styles/{css}")), "got: {body}");
+
+    let asset = reqwest::get(format!("{url}/styles/{css}")).await.unwrap();
+    assert_eq!(asset.status(), 200);
+    assert!(!asset.text().await.unwrap().is_empty());
+
+    // outside the base is not served
+    let root = url.strip_suffix("/app").unwrap();
+    assert_eq!(
+        reqwest::get(format!("{root}/")).await.unwrap().status(),
+        404
+    );
 
     child.kill().unwrap();
     child.wait().unwrap();

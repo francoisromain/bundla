@@ -61,7 +61,7 @@ async fn static_assets_are_copied_in_prod() {
     fs::write(src.join("img/logo.png"), LOGO_PNG).unwrap();
 
     let dist = dir.path().join("dist");
-    build(&src, &dist, BuildOptions::PROD).await.unwrap();
+    build(&src, &dist, &BuildOptions::PROD).await.unwrap();
 
     assert_eq!(
         fs::read(src.join("img/logo.png")).unwrap(),
@@ -120,7 +120,7 @@ async fn dev_build_mirrors_and_rewrites() {
     );
 
     let dist = dir.path().join("dist");
-    build(&src, &dist, BuildOptions::DEV).await.unwrap();
+    build(&src, &dist, &BuildOptions::DEV).await.unwrap();
 
     let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
     assert!(out_html.contains("./styles/main.css"));
@@ -148,7 +148,7 @@ async fn dev_build_writes_no_reload_script() {
     );
 
     let dist = dir.path().join("dev");
-    let warnings = build(&src, &dist, BuildOptions::DEV).await.unwrap();
+    let warnings = build(&src, &dist, &BuildOptions::DEV).await.unwrap();
     assert!(warnings.is_empty(), "got: {warnings:?}");
 
     let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
@@ -179,7 +179,7 @@ async fn prod_build_minifies_and_hashes() {
     );
 
     let dist = dir.path().join("dist");
-    build(&src, &dist, BuildOptions::PROD).await.unwrap();
+    build(&src, &dist, &BuildOptions::PROD).await.unwrap();
 
     let styles = dir_names(&dist.join("styles"));
     assert_eq!(
@@ -230,7 +230,7 @@ async fn shared_asset_bundled_once_across_pages() {
     );
 
     let dist = dir.path().join("dist");
-    build(&src, &dist, BuildOptions::PROD).await.unwrap();
+    build(&src, &dist, &BuildOptions::PROD).await.unwrap();
 
     let styles = dir_names(&dist.join("styles"));
     assert_eq!(
@@ -273,7 +273,7 @@ async fn css_import_bundled_and_rewritten() {
     );
 
     let dist = dir.path().join("dist");
-    build(&src, &dist, BuildOptions::PROD).await.unwrap();
+    build(&src, &dist, &BuildOptions::PROD).await.unwrap();
 
     let main_names: Vec<String> = dir_names(&dist.join("styles"))
         .into_iter()
@@ -319,7 +319,7 @@ async fn build_errors_no_html_pages() {
     write_files(&src, &[("styles/main.css", "body{}\n")]);
     let dist = dir.path().join("dist");
 
-    let err = build(&src, &dist, BuildOptions::DEV).await.unwrap_err();
+    let err = build(&src, &dist, &BuildOptions::DEV).await.unwrap_err();
     assert!(err.contains("no .html pages"), "got: {err}");
 }
 
@@ -328,7 +328,7 @@ async fn build_errors_missing_src() {
     let dir = tempdir().unwrap();
     let dist = dir.path().join("dist");
 
-    let err = build(&dir.path().join("missing"), &dist, BuildOptions::DEV)
+    let err = build(&dir.path().join("missing"), &dist, &BuildOptions::DEV)
         .await
         .unwrap_err();
     assert!(err.contains("source directory not found"), "got: {err}");
@@ -340,7 +340,7 @@ async fn build_errors_dist_equal_src() {
     let src = dir.path().join("src");
     write_files(&src, &[("index.html", PAGE)]);
 
-    let err = build(&src, &src, BuildOptions::DEV).await.unwrap_err();
+    let err = build(&src, &src, &BuildOptions::DEV).await.unwrap_err();
     assert!(
         err.contains("must not be the source directory"),
         "got: {err}"
@@ -353,8 +353,277 @@ async fn build_errors_dist_inside_src() {
     let src = dir.path().join("src");
     write_files(&src, &[("index.html", PAGE)]);
 
-    let err = build(&src, &src.join("out"), BuildOptions::DEV)
+    let err = build(&src, &src.join("out"), &BuildOptions::DEV)
         .await
         .unwrap_err();
     assert!(err.contains("must not be inside"), "got: {err}");
+}
+
+// With a base, root-relative references are resolved against the `src`
+// root (not the page directory), bundled, and rewritten keeping the
+// written prefix.
+#[tokio::test]
+async fn base_bundles_root_relative_refs() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "sub/index.html",
+                r#"<html><head>
+  <link rel="stylesheet" href="/app/styles/main.css" />
+  <script type="module" src="/app/scripts/app.js"></script>
+</head><body>base</body></html>"#,
+            ),
+            (
+                "styles/main.css",
+                "@import url(\"/app/styles/sub/reset.css\");\nbody { color: black; }\n",
+            ),
+            ("styles/sub/reset.css", "p { margin: 0; }\n"),
+            ("scripts/app.js", "console.log('app');\n"),
+        ],
+    );
+
+    let dist = dir.path().join("dist");
+    let options = BuildOptions {
+        base: Some("/app".into()),
+        ..BuildOptions::PROD
+    };
+    let warnings = build(&src, &dist, &options).await.unwrap();
+    assert!(warnings.is_empty(), "got: {warnings:?}");
+
+    // resolved against the src root although the page sits in sub/
+    let styles: Vec<String> = dir_names(&dist.join("styles"))
+        .into_iter()
+        .filter(|n| n.ends_with(".css"))
+        .collect();
+    assert_eq!(
+        styles.len(),
+        1,
+        "expected one css output in styles: {styles:?}"
+    );
+    let css_name = &styles[0];
+    assert!(
+        css_name.starts_with("main-") && css_name.ends_with(".css"),
+        "{css_name}"
+    );
+
+    let scripts = dir_names(&dist.join("scripts"));
+    assert_eq!(
+        scripts.len(),
+        1,
+        "expected one js output in scripts: {scripts:?}"
+    );
+    let js_name = &scripts[0];
+    assert!(
+        js_name.starts_with("app-") && js_name.ends_with(".js"),
+        "{js_name}"
+    );
+
+    // the written refs keep the base prefix
+    let out_html = fs::read_to_string(dist.join("sub/index.html")).unwrap();
+    assert!(
+        out_html.contains(&format!("/app/styles/{css_name}")),
+        "got: {out_html}"
+    );
+    assert!(
+        out_html.contains(&format!("/app/scripts/{js_name}")),
+        "got: {out_html}"
+    );
+
+    // root-relative css @import under the base: bundled and rewritten
+    let resets = dir_names(&dist.join("styles/sub"));
+    assert_eq!(resets.len(), 1, "expected one reset output: {resets:?}");
+    let out_css = fs::read_to_string(dist.join("styles").join(css_name)).unwrap();
+    assert!(
+        out_css.contains(&format!("/app/styles/sub/{}", resets[0])),
+        "got: {out_css}"
+    );
+}
+
+// Root-relative references outside the base are left verbatim for the
+// browser, and the missing assets are not bundled.
+#[tokio::test]
+async fn base_refs_outside_base_left_verbatim() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "index.html",
+                r#"<html><head>
+  <link rel="stylesheet" href="/styles/main.css" />
+</head><body>outside</body></html>"#,
+            ),
+            ("styles/main.css", "body { color: black; }\n"),
+        ],
+    );
+
+    let dist = dir.path().join("dist");
+    let options = BuildOptions {
+        base: Some("/app".into()),
+        ..BuildOptions::PROD
+    };
+    let warnings = build(&src, &dist, &options).await.unwrap();
+    assert!(warnings.is_empty(), "got: {warnings:?}");
+
+    let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        out_html.contains("/styles/main.css"),
+        "ref outside the base must be left verbatim, got: {out_html}"
+    );
+    assert!(
+        !dist.join("styles").exists(),
+        "the outside asset must not be bundled"
+    );
+}
+
+// Without a base, root-relative references are skipped with a warning:
+// the referenced css/js is not bundled (and not copied either), so it
+// would 404 when served.
+#[tokio::test]
+async fn root_relative_refs_without_base_warn() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "index.html",
+                r#"<html><head>
+  <link rel="stylesheet" href="/styles/main.css" />
+</head><body>plain</body></html>"#,
+            ),
+            ("styles/main.css", "body { color: black; }\n"),
+        ],
+    );
+
+    let dist = dir.path().join("dist");
+    let warnings = build(&src, &dist, &BuildOptions::PROD).await.unwrap();
+    assert_eq!(warnings.len(), 1, "got: {warnings:?}");
+    assert!(
+        warnings[0].contains("skipping root-relative reference"),
+        "got: {}",
+        warnings[0]
+    );
+    assert!(
+        warnings[0].contains("/styles/main.css"),
+        "got: {}",
+        warnings[0]
+    );
+
+    // left verbatim, and nothing bundled for it
+    let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(out_html.contains("/styles/main.css"), "got: {out_html}");
+    assert!(!dist.join("styles").exists(), "got: {:?}", dir_names(&dist));
+}
+
+// `/x.css` and `./x.css` point at the same source file: the cache
+// bundles it once.
+#[tokio::test]
+async fn base_dedup_across_ref_forms() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "index.html",
+                r#"<html><head>
+  <link rel="stylesheet" href="/app/styles/main.css" />
+  <link rel="stylesheet" href="./styles/main.css" />
+</head><body>dedup</body></html>"#,
+            ),
+            ("styles/main.css", "body { color: black; }\n"),
+        ],
+    );
+
+    let dist = dir.path().join("dist");
+    let options = BuildOptions {
+        base: Some("/app".into()),
+        ..BuildOptions::PROD
+    };
+    let warnings = build(&src, &dist, &options).await.unwrap();
+    assert!(warnings.is_empty(), "got: {warnings:?}");
+
+    let styles = dir_names(&dist.join("styles"));
+    assert_eq!(
+        styles.len(),
+        1,
+        "expected the shared css bundled once: {styles:?}"
+    );
+
+    // both ref forms are rewritten to their own valid prefix
+    let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        out_html.contains(&format!("/app/styles/{}", styles[0])),
+        "got: {out_html}"
+    );
+    assert!(
+        out_html.contains(&format!("./styles/{}", styles[0])),
+        "got: {out_html}"
+    );
+}
+
+// With the site root as base, root-level refs from a subpage and from a
+// css @import keep their leading slash in the rewritten output.
+#[tokio::test]
+async fn base_root_bundles_root_level_assets() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "sub/index.html",
+                r#"<html><head>
+  <link rel="stylesheet" href="/main.css" />
+  <script type="module" src="/main.js"></script>
+</head><body>root base</body></html>"#,
+            ),
+            (
+                "main.css",
+                "@import url(\"/reset.css\");\nbody { color: black; }\n",
+            ),
+            ("reset.css", "p { margin: 0; }\n"),
+            ("main.js", "console.log('root');\n"),
+        ],
+    );
+
+    let dist = dir.path().join("dist");
+    let options = BuildOptions {
+        base: Some("/".into()),
+        ..BuildOptions::PROD
+    };
+    let warnings = build(&src, &dist, &options).await.unwrap();
+    assert!(warnings.is_empty(), "got: {warnings:?}");
+
+    let root_names = dir_names(&dist);
+    let css_name = root_names
+        .iter()
+        .find(|n| n.starts_with("main-") && n.ends_with(".css"))
+        .expect("main css output");
+    let js_name = root_names
+        .iter()
+        .find(|n| n.starts_with("main-") && n.ends_with(".js"))
+        .expect("main js output");
+    let reset_name = root_names
+        .iter()
+        .find(|n| n.starts_with("reset-") && n.ends_with(".css"))
+        .expect("reset css output");
+
+    let out_html = fs::read_to_string(dist.join("sub/index.html")).unwrap();
+    assert!(
+        out_html.contains(&format!("/{css_name}")),
+        "got: {out_html}"
+    );
+    assert!(out_html.contains(&format!("/{js_name}")), "got: {out_html}");
+
+    let out_css = fs::read_to_string(dist.join(css_name)).unwrap();
+    assert!(
+        out_css.contains(&format!("/{reset_name}")),
+        "got: {out_css}"
+    );
 }

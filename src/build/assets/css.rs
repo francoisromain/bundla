@@ -13,16 +13,25 @@ use super::{
     dist_mkdir, file_name_output_format, file_stem_extract,
 };
 
+// Threaded through the recursive bundling; grouping them keeps the
+// signatures readable.
+struct CssState<'a> {
+    cache: &'a mut HashMap<PathBuf, String>,
+    warnings: &'a mut Vec<String>,
+}
+
 pub fn css_bundle(
     asset_path: &Path,
     src: &Path,
     dist: &Path,
     dir: &Path,
-    options: BuildOptions,
+    options: &BuildOptions,
     cache: &mut HashMap<PathBuf, String>,
+    warnings: &mut Vec<String>,
 ) -> Result<String, String> {
     let mut stack: Vec<PathBuf> = Vec::new();
-    css_bundle_rec(asset_path, src, dist, dir, options, cache, &mut stack)
+    let mut state = CssState { cache, warnings };
+    css_bundle_rec(asset_path, src, dist, dir, options, &mut state, &mut stack)
 }
 
 // The stack carries the in-progress sources so that a cycle in the `@import`
@@ -32,8 +41,8 @@ fn css_bundle_rec(
     src: &Path,
     dist: &Path,
     dir: &Path,
-    options: BuildOptions,
-    cache: &mut HashMap<PathBuf, String>,
+    options: &BuildOptions,
+    state: &mut CssState,
     stack: &mut Vec<PathBuf>,
 ) -> Result<String, String> {
     let asset_path =
@@ -50,7 +59,7 @@ fn css_bundle_rec(
         src,
         dist,
         options,
-        cache,
+        state,
         stack,
     );
     stack.pop();
@@ -93,7 +102,9 @@ fn css_bundle_rec(
 }
 
 // - bundle every relative `@import` target and rewrite url to its output name
-// - remotes and absolute-rooted refs are left untouched
+// - root-relative targets are bundled when they start with the base,
+//   and left untouched otherwise
+// - remotes are left untouched
 // - missing local targets are hard errors
 // - @import targets are always content-hashed, dev included,
 // So editing an imported file yields a new url and the browser re-fetches it
@@ -103,8 +114,8 @@ fn css_imports_rewrite(
     asset_path: &Path,
     src: &Path,
     dist: &Path,
-    options: BuildOptions,
-    cache: &mut HashMap<PathBuf, String>,
+    options: &BuildOptions,
+    state: &mut CssState,
     stack: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
     for import in stylesheet.rules.0.iter_mut().filter_map(|rule| match rule {
@@ -113,12 +124,14 @@ fn css_imports_rewrite(
     }) {
         let import_ref = import.url.as_ref();
         let (import_ref_cleaned, _) = path::url_ref_split(import_ref);
-        if import_ref_cleaned.trim().is_empty() || path::is_remote_or_absolute(import_ref_cleaned) {
-            continue;
-        }
-
-        let Some(import_path) = path::asset_ref_path_resolve(src, asset_path, import_ref_cleaned)?
+        let Some(import_path) =
+            path::asset_ref_path_resolve(src, asset_path, import_ref, options.base.as_deref())?
         else {
+            if options.base.is_none() && path::is_root_relative(import_ref_cleaned.trim()) {
+                state
+                    .warnings
+                    .push(path::asset_ref_skip_warn(import_ref, asset_path));
+            }
             continue;
         };
         if stack.contains(&import_path) {
@@ -129,8 +142,8 @@ fn css_imports_rewrite(
             ));
         }
 
-        let file_name = match cache.get(&import_path) {
-            Some(file_name) => file_name.clone(),
+        let file_name = match state.cache.get(&import_path).cloned() {
+            Some(file_name) => file_name,
             None => {
                 let imported_dir = import_path
                     .strip_prefix(src)
@@ -149,14 +162,14 @@ fn css_imports_rewrite(
                     src,
                     dist,
                     &imported_dir,
-                    BuildOptions {
+                    &BuildOptions {
                         hash: true,
-                        ..options
+                        ..options.clone()
                     },
-                    cache,
+                    state,
                     stack,
                 )?;
-                cache.insert(import_path.clone(), file_name.clone());
+                state.cache.insert(import_path.clone(), file_name.clone());
                 file_name
             }
         };
@@ -186,9 +199,17 @@ mod tests {
         src: &Path,
         dist: &Path,
         dir: &Path,
-        options: BuildOptions,
+        options: &BuildOptions,
     ) -> Result<String, String> {
-        css_bundle(source, src, dist, dir, options, &mut HashMap::new())
+        css_bundle(
+            source,
+            src,
+            dist,
+            dir,
+            options,
+            &mut HashMap::new(),
+            &mut Vec::new(),
+        )
     }
 
     fn list_names(dir: &Path) -> Vec<String> {
@@ -217,7 +238,7 @@ mod tests {
             &src,
             &src.join("out"),
             Path::new("styles"),
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
         )
         .unwrap_err();
         assert!(err.contains("css parse error"), "got: {err}");
@@ -234,7 +255,7 @@ mod tests {
             &src,
             &src.join("out"),
             Path::new(""),
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
         )
         .unwrap_err();
         assert!(err.contains("css source unreadable"), "got: {err}");
@@ -248,8 +269,14 @@ mod tests {
         write_css(&source, "body { color: red; }\n");
         let dist = src.join("out");
 
-        let name =
-            bundle_css(&source, &src, &dist, Path::new("styles"), BuildOptions::DEV).unwrap();
+        let name = bundle_css(
+            &source,
+            &src,
+            &dist,
+            Path::new("styles"),
+            &BuildOptions::DEV,
+        )
+        .unwrap();
         assert_eq!(name, "theme.css");
         let code = fs::read_to_string(dist.join("styles/theme.css")).unwrap();
         assert!(
@@ -270,9 +297,10 @@ mod tests {
             minify: true,
             sourcemap: true,
             hash: true,
+            base: None,
         };
 
-        let name = bundle_css(&source, &src, &dist, Path::new("styles"), options).unwrap();
+        let name = bundle_css(&source, &src, &dist, Path::new("styles"), &options).unwrap();
         assert!(
             name.starts_with("theme-") && name.ends_with(".css"),
             "got: {name}"
@@ -306,7 +334,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
         )
         .unwrap();
         assert!(
@@ -339,7 +367,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
         )
         .unwrap();
 
@@ -383,7 +411,7 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
         )
         .unwrap();
 
@@ -427,7 +455,7 @@ mod tests {
             &src,
             &first_dist,
             Path::new("styles"),
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
         )
         .unwrap();
         let first_resets: Vec<String> = list_names(&first_dist.join("styles/sub"))
@@ -450,7 +478,7 @@ mod tests {
             &src,
             &second_dist,
             Path::new("styles"),
-            BuildOptions::DEV,
+            &BuildOptions::DEV,
         )
         .unwrap();
         let second_resets: Vec<String> = list_names(&second_dist.join("styles/sub"))
@@ -496,8 +524,9 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
             &mut cache,
+            &mut Vec::new(),
         )
         .unwrap();
         css_bundle(
@@ -505,8 +534,9 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
             &mut cache,
+            &mut Vec::new(),
         )
         .unwrap();
 
@@ -546,7 +576,7 @@ mod tests {
             &src,
             &dist,
             Path::new(""),
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
         )
         .unwrap_err();
         assert!(err.contains("css import cycle"), "got: {err}");
@@ -567,9 +597,100 @@ mod tests {
             &src,
             &dist,
             Path::new("styles"),
-            BuildOptions::PROD,
+            &BuildOptions::PROD,
         )
         .unwrap_err();
         assert!(err.contains("asset not found"), "got: {err}");
+    }
+
+    #[test]
+    fn css_import_root_relative_under_base_bundled() {
+        let dir = tempdir().unwrap();
+        let src = fs::canonicalize(dir.path()).unwrap();
+        fs::create_dir_all(src.join("styles/sub")).unwrap();
+        write_css(
+            &src.join("styles/main.css"),
+            "@import url(\"/app/styles/sub/reset.css\");\n@import url(\"/other/theme.css\");\nbody{}\n",
+        );
+        write_css(&src.join("styles/sub/reset.css"), "p { margin: 0; }\n");
+        let dist = src.join("out");
+        let options = BuildOptions {
+            base: Some("/app".into()),
+            ..BuildOptions::PROD
+        };
+
+        bundle_css(
+            &src.join("styles/main.css"),
+            &src,
+            &dist,
+            Path::new("styles"),
+            &options,
+        )
+        .unwrap();
+
+        let resets = list_names(&dist.join("styles/sub"));
+        assert_eq!(resets.len(), 1, "expected one reset output: {resets:?}");
+        assert!(
+            resets[0].starts_with("reset-") && resets[0].ends_with(".css"),
+            "{resets:?}"
+        );
+        let mains = list_names(&dist.join("styles"));
+        assert_eq!(mains.len(), 1, "expected one main output: {mains:?}");
+        let out_code = fs::read_to_string(dist.join("styles").join(&mains[0])).unwrap();
+        // under the base: bundled, rewritten keeping the base prefix
+        assert!(
+            out_code.contains(&format!("/app/styles/sub/{}", resets[0])),
+            "got: {out_code}"
+        );
+        // outside the base: left verbatim for the browser
+        assert!(out_code.contains("/other/theme.css"), "got: {out_code}");
+    }
+
+    #[test]
+    fn css_import_root_relative_without_base_warns() {
+        let dir = tempdir().unwrap();
+        let src = fs::canonicalize(dir.path()).unwrap();
+        fs::create_dir_all(src.join("styles/sub")).unwrap();
+        let main = src.join("styles/main.css");
+        write_css(&main, "@import url(\"/styles/sub/reset.css\");\nbody{}\n");
+        write_css(&src.join("styles/sub/reset.css"), "p{}\n");
+        let dist = src.join("out");
+
+        let mut warnings = Vec::new();
+        css_bundle(
+            &main,
+            &src,
+            &dist,
+            Path::new("styles"),
+            &BuildOptions::PROD,
+            &mut HashMap::new(),
+            &mut warnings,
+        )
+        .unwrap();
+
+        assert_eq!(warnings.len(), 1, "got: {warnings:?}");
+        assert!(
+            warnings[0].contains("skipping root-relative reference"),
+            "got: {}",
+            warnings[0]
+        );
+        assert!(
+            warnings[0].contains("/styles/sub/reset.css"),
+            "got: {}",
+            warnings[0]
+        );
+
+        // the import is left verbatim and the target is not bundled
+        let mains = list_names(&dist.join("styles"));
+        assert_eq!(mains.len(), 1, "{mains:?}");
+        let out_code = fs::read_to_string(dist.join("styles").join(&mains[0])).unwrap();
+        assert!(
+            out_code.contains("/styles/sub/reset.css"),
+            "got: {out_code}"
+        );
+        assert!(
+            !dist.join("styles/sub").exists(),
+            "target must not be bundled"
+        );
     }
 }
