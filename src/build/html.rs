@@ -6,6 +6,8 @@ use std::{
 
 use lol_html::{RewriteStrSettings, element, html_content::Element, rewrite_str};
 
+use super::Minify;
+
 // Collect `<link rel="stylesheet">` hrefs and `<script type="module">` srcs, in document order.
 // Non-module scripts are skipped and reported as warnings.
 pub fn html_asset_refs_extract(
@@ -112,13 +114,20 @@ pub fn html_rewrite(html: &str, map: &HashMap<String, String>) -> Result<String,
 }
 
 // Minify an html document with minify-html, keeping closing tags and
-// structural (`<html>`, `<head>`) opening tags so the output stays readable
-pub fn html_minify(html: &str) -> Result<String, String> {
+// structural (`<html>`, `<head>`) opening tags so the output stays readable.
+//
+// Inline `<style>`/`<script>` content follows the `css`/`js` targets.
+// Brace template syntax (`{{ }}`, `{% %}`, `{# #}`) is preserved in text.
+//
+// Tags placed between start-tag attributes are still parsed as attributes and
+// can be corrupted; this is an upstream minify-html bug (#232).
+pub fn html_minify(html: &str, minify: Minify) -> Result<String, String> {
     let mut cfg = minify_html::Cfg::new();
     cfg.keep_closing_tags = true;
     cfg.keep_html_and_head_opening_tags = true;
-    cfg.minify_css = true;
-    cfg.minify_js = true;
+    cfg.minify_css = minify.contains(Minify::CSS);
+    cfg.minify_js = minify.contains(Minify::JS);
+    cfg.preserve_brace_template_syntax = true;
     let minified = minify_html::minify(html.as_bytes(), &cfg);
     String::from_utf8(minified).map_err(|err| format!("html minify error: {err}"))
 }
@@ -251,10 +260,42 @@ mod tests {
     fn minify_compresses_and_keeps_structure() {
         let html = "<html>\n  <head>\n    <title>t</title>\n  </head>\n  <body>\n    <p>hello world</p>\n  </body>\n</html>";
 
-        let out = html_minify(html).unwrap();
+        let out = html_minify(html, Minify::ALL).unwrap();
         assert!(out.contains("<html>"));
         assert!(out.contains("<head>"));
         assert!(out.contains("hello world"));
         assert!(out.len() < html.len());
+    }
+
+    #[test]
+    fn minify_html_only_keeps_inline_css_and_js() {
+        let html = "<html>\n  <head>\n    <style>body { color: red; }</style>\n    <script>const config = { color: 'red' };</script>\n  </head>\n  <body>\n    <p>hello world</p>\n  </body>\n</html>";
+
+        let out = html_minify(html, Minify::HTML).unwrap();
+        assert!(out.contains("body { color: red; }"), "got: {out}");
+        assert!(
+            out.contains("const config = { color: 'red' };"),
+            "got: {out}"
+        );
+        assert!(out.len() < html.len());
+    }
+
+    #[test]
+    fn minify_all_minifies_inline_css_and_js() {
+        let html = "<html><head><style>body { color: red; }</style><script>const x = 1;</script></head><body>x</body></html>";
+
+        let out = html_minify(html, Minify::ALL).unwrap();
+        assert!(out.contains("body{color:red}"), "got: {out}");
+        assert!(out.contains("const x=1"), "got: {out}");
+    }
+
+    #[test]
+    fn minify_preserves_brace_template_syntax_in_text() {
+        let html = "<html><body><p>{{  hello   }}</p>{%  if x  %}<span>x</span>{%  endif  %}</body></html>";
+
+        let out = html_minify(html, Minify::ALL).unwrap();
+        assert!(out.contains("{{  hello   }}"), "got: {out}");
+        assert!(out.contains("{%  if x  %}"), "got: {out}");
+        assert!(out.contains("{%  endif  %}"), "got: {out}");
     }
 }

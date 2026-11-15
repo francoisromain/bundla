@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use tempfile::tempdir;
 
-use bundla::{BuildOptions, build};
+use bundla::{BuildOptions, Minify, build};
 
 fn write_files(root: &Path, files: &[(&str, &str)]) {
     for (rel, content) in files {
@@ -163,6 +163,87 @@ async fn dev_build_writes_no_reload_script() {
     let out_css = fs::read_to_string(dist.join("styles/main.css")).unwrap();
     assert!(!out_css.contains("EventSource"), "got: {out_css}");
     assert!(!out_css.contains("livereload"), "got: {out_css}");
+}
+
+// HTML minification is opt-out through the target set: Tera tags placed
+// between start-tag attributes are kept verbatim while css/js are still
+// minified and hashed (upstream minify-html bug #232).
+#[tokio::test]
+async fn build_without_html_minify_keeps_template_tags() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_files(
+        &src,
+        &[
+            (
+                "index.html",
+                r#"<html>
+  <head>
+    <link rel="stylesheet" href="./styles/main.css" />
+    <script type="module" src="./scripts/app.js"></script>
+  </head>
+  <body>
+    <input type="radio" name="theme_name" value="{{ theme }}" {% if theme == theme_name %}checked{% endif %}>
+    <option value="{{ status.id }}"{% if status.id == revision.status_id %} selected{% endif %}>x</option>
+  </body>
+</html>
+"#,
+            ),
+            ("styles/main.css", "body { color: black; }\n"),
+            (
+                "scripts/app.js",
+                "const answer = 41 + 1;\nconsole.log(answer);\n",
+            ),
+        ],
+    );
+
+    let dist = dir.path().join("dist");
+    let options = BuildOptions {
+        minify: Minify::CSS | Minify::JS,
+        ..BuildOptions::PROD
+    };
+    let warnings = build(&src, &dist, &options).await.unwrap();
+    assert!(warnings.is_empty(), "got: {warnings:?}");
+
+    // css/js keep the prod treatment: hashed names and minified content
+    let mut styles = dir_names(&dist.join("styles"));
+    let css_name = styles.remove(0);
+    assert!(
+        css_name.starts_with("main-") && css_name.ends_with(".css"),
+        "{css_name}"
+    );
+    let out_css = fs::read_to_string(dist.join("styles").join(&css_name)).unwrap();
+    assert!(
+        out_css.trim().starts_with("body{color:"),
+        "expected minified css: {out_css}"
+    );
+
+    let mut scripts = dir_names(&dist.join("scripts"));
+    let js_name = scripts.remove(0);
+    assert!(
+        js_name.starts_with("app-") && js_name.ends_with(".js"),
+        "{js_name}"
+    );
+    let out_js = fs::read_to_string(dist.join("scripts").join(&js_name)).unwrap();
+    assert!(!out_js.contains("41 + 1"), "expected minified js: {out_js}");
+
+    // html is untouched: the template tags between attributes survive and
+    // so does the source indentation
+    let out_html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        out_html.contains(r#"{% if theme == theme_name %}checked{% endif %}"#),
+        "got: {out_html}"
+    );
+    assert!(
+        out_html.contains(r#"{% if status.id == revision.status_id %} selected{% endif %}"#),
+        "got: {out_html}"
+    );
+    assert!(
+        out_html.contains("\n  <body>"),
+        "expected the html whitespace to be preserved: {out_html}"
+    );
+    assert!(out_html.contains(&css_name), "got: {out_html}");
+    assert!(out_html.contains(&js_name), "got: {out_html}");
 }
 
 #[tokio::test]

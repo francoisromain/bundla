@@ -25,7 +25,7 @@ pub use webadev::Server;
 
 mod build;
 
-pub use build::{BuildOptions, build};
+pub use build::{BuildOptions, Minify, build};
 
 mod watch;
 

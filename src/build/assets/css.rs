@@ -9,7 +9,7 @@ use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, Sty
 use parcel_sourcemap::SourceMap;
 
 use super::{
-    super::{BuildOptions, path},
+    super::{BuildOptions, Minify, path},
     dist_mkdir, file_name_output_format, file_stem_extract,
 };
 
@@ -65,7 +65,7 @@ fn css_bundle_rec(
     stack.pop();
     err?;
 
-    if options.minify {
+    if options.minify.contains(Minify::CSS) {
         stylesheet
             .minify(MinifyOptions::default())
             .map_err(|err| format!("css minify error: {err}"))?;
@@ -76,7 +76,7 @@ fn css_bundle_rec(
     let mut map = SourceMap::new("/");
     let result = stylesheet
         .to_css(PrinterOptions {
-            minify: options.minify,
+            minify: options.minify.contains(Minify::CSS),
             source_map: options.sourcemap.then_some(&mut map),
             ..PrinterOptions::default()
         })
@@ -294,7 +294,7 @@ mod tests {
         write_css(&source, "body { color: red; }\n");
         let dist = src.join("out");
         let options = BuildOptions {
-            minify: true,
+            minify: Minify::ALL,
             sourcemap: true,
             hash: true,
             base: None,

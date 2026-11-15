@@ -5,7 +5,9 @@ use std::process::exit;
 use clap::Parser;
 use tokio::sync::broadcast::{self, Sender};
 
-use bundla::{BuildOptions, Server, ServerConfig, WatchLog, build, serve, watch, watch_serve};
+use bundla::{
+    BuildOptions, Minify, Server, ServerConfig, WatchLog, build, serve, watch, watch_serve,
+};
 
 #[derive(Parser)]
 #[command(
@@ -30,6 +32,11 @@ struct Args {
     /// Dev build: unminified with sourcemaps (default output: dev/)
     #[arg(short, long)]
     dev: bool,
+
+    /// Comma-separated output targets to minify: css, js, html, all, or none
+    /// (prod default: all; --dev default: none)
+    #[arg(long, value_name = "TARGETS")]
+    minify: Option<Minify>,
 
     /// Watch `src` and rebuild on every change
     #[arg(short, long)]
@@ -80,15 +87,7 @@ async fn main() {
 // `--watch` and `--serve` select the continuations after the build
 async fn run(args: &Args) -> Result<(), String> {
     let dist = output_dir(args);
-    let profile = if args.dev {
-        BuildOptions::DEV
-    } else {
-        BuildOptions::PROD
-    };
-    let options = BuildOptions {
-        base: args.base.clone(),
-        ..profile
-    };
+    let options = options_build(args);
 
     match (args.watch, args.serve) {
         // Build once, then exit
@@ -123,6 +122,22 @@ async fn run(args: &Args) -> Result<(), String> {
             println!("bundled {}", dist.display());
             start(server, args.open).await
         }
+    }
+}
+
+// `--minify` overrides the profile's target set; the other profile fields
+// (sourcemaps, hashed filenames, output dir) stay tied to `--dev`
+fn options_build(args: &Args) -> BuildOptions {
+    let profile = if args.dev {
+        BuildOptions::DEV
+    } else {
+        BuildOptions::PROD
+    };
+
+    BuildOptions {
+        base: args.base.clone(),
+        minify: args.minify.unwrap_or(profile.minify),
+        ..profile
     }
 }
 
@@ -233,6 +248,7 @@ mod tests {
             dist,
             base: None,
             dev,
+            minify: None,
             watch,
             serve,
             port: 8080,
@@ -268,6 +284,35 @@ mod tests {
     fn flags_parse_longs() {
         let parsed = Args::try_parse_from(["bundla", "--dev", "--watch", "--serve"]).unwrap();
         assert!(parsed.dev && parsed.watch && parsed.serve);
+    }
+
+    #[test]
+    fn minify_parses_targets() {
+        let parsed = Args::try_parse_from(["bundla", "--minify", "css,js"]).unwrap();
+        assert_eq!(parsed.minify, Some(Minify::CSS | Minify::JS));
+
+        let parsed = Args::try_parse_from(["bundla", "--minify=all"]).unwrap();
+        assert_eq!(parsed.minify, Some(Minify::ALL));
+
+        let parsed = Args::try_parse_from(["bundla", "--minify", "none"]).unwrap();
+        assert_eq!(parsed.minify, Some(Minify::NONE));
+
+        let parsed = Args::try_parse_from(["bundla", "--minify", " JS , css "]).unwrap();
+        assert_eq!(parsed.minify, Some(Minify::CSS | Minify::JS));
+    }
+
+    #[test]
+    fn minify_rejects_invalid_targets() {
+        for value in ["", "htlm", "none,js", "all,css", "css,,js"] {
+            let err = Args::try_parse_from(["bundla", "--minify", value])
+                .err()
+                .expect("expected an invalid minify target to be rejected");
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "value: {value:?}"
+            );
+        }
     }
 
     #[test]
@@ -384,6 +429,30 @@ mod tests {
 
         let dev = args(true, false, false, None, vec![]);
         assert_eq!(output_dir(&dev), PathBuf::from("dev"));
+    }
+
+    #[test]
+    fn build_options_default_minify_follows_profile() {
+        let prod = options_build(&args(false, false, false, None, vec![]));
+        assert_eq!(prod.minify, Minify::ALL);
+
+        let dev = options_build(&args(true, false, false, None, vec![]));
+        assert_eq!(dev.minify, Minify::NONE);
+    }
+
+    #[test]
+    fn build_options_minify_overrides_profile() {
+        let mut parsed = args(false, false, false, None, vec![]);
+        parsed.minify = Some(Minify::CSS | Minify::JS);
+        assert_eq!(options_build(&parsed).minify, Minify::CSS | Minify::JS);
+
+        // `--minify` is independent of `--dev`: only the target set changes
+        let mut parsed = args(true, false, false, None, vec![]);
+        parsed.minify = Some(Minify::HTML);
+        let options = options_build(&parsed);
+        assert_eq!(options.minify, Minify::HTML);
+        assert!(options.sourcemap);
+        assert!(!options.hash);
     }
 
     #[test]

@@ -30,6 +30,7 @@
         <li><a href="#cli">CLI</a></li>
         <li><a href="#library">Library</a></li>
         <li><a href="#local-installation">Local installation</a></li>
+        <li><a href="#known-bug">Known bug</a></li>
         <li><a href="#version-history">Version history</a></li>
       </ul>
     </nav>
@@ -55,12 +56,17 @@
         mirrored to <code>dev</code>/<code>dist</code>.
       </li>
       <li>
-        <code>&lt;link rel="stylesheet"&gt;</code>, css
+        <code>&lt;link rel="stylesheet"&gt;</code>, CSS
         <code>@import</code> and <code>&lt;script type="module"&gt;</code>
         references are bundled (one output per asset, cached across pages) and
         rewritten in place.
       </li>
       <li><code>type="module"</code> is required for scripts.</li>
+      <li>
+        TypeScript entries work (e.g. <code>./scripts.ts</code>). The rewritten
+        ref is <code>.js</code> (<code>scripts.js</code> in dev,
+        <code>scripts-&lt;hash&gt;.js</code> in prod).
+      </li>
       <li>
         <code>?query</code>/<code>#fragment</code> suffixes on references are
         preserved.
@@ -92,6 +98,13 @@ bundla</code></pre>
       <li>
         <code>--dev</code> / <code>-d</code>: dev build, unminified with
         sourcemaps, output dir <code>dev/</code>.
+      </li>
+      <li>
+        <code>--minify &lt;targets&gt;</code>: comma-separated output targets to
+        minify: <code>css</code>, <code>js</code>, <code>html</code>, or
+        <code>all</code> / <code>none</code> (default: <code>all</code> for prod
+        builds, <code>none</code> with <code>--dev</code>). There is a
+        <a href="#known-bug">known bug</a> for templates.
       </li>
       <li>
         <code>--watch</code> / <code>-w</code>: rebuild on every change to
@@ -161,7 +174,10 @@ bundla --src client/src --dist client/dist
 bundla --base /app
 
 # same, served under /app
-bundla -s --base /app</code></pre>
+bundla -s --base /app
+
+# prod build for a server-rendered template: minify css/js, keep the html
+bundla --minify css,js</code></pre>
 
     <p>Dev build</p>
     <pre><code># dev build of `src/` into `dev/` with sourcemaps
@@ -214,18 +230,17 @@ for warning in warnings {
 }</code></pre>
     <p>
       On success, <code>build</code> returns the warnings collected during the
-      build (unreadable assets, non-module scripts, bundler warnings);
-      displaying them is up to you.
+      build (unreadable assets, non-module scripts, bundler warnings).
     </p>
     <p><code>BuildOptions</code> presets:</p>
     <ul>
       <li>
-        <code>BuildOptions::DEV</code>: unminified, with sourcemaps, no
+        <code>BuildOptions::DEV</code>: no minification, with sourcemaps, no
         hashed filenames.
       </li>
       <li>
-        <code>BuildOptions::PROD</code>: minified, hashed filenames, no
-        sourcemaps.
+        <code>BuildOptions::PROD</code>: minifies CSS, JS, and HTML, hashed
+        filenames, no sourcemaps.
       </li>
     </ul>
     <p>Combine a preset with a base:</p>
@@ -234,14 +249,27 @@ for warning in warnings {
     ..BuildOptions::DEV
 };</code></pre>
     <p>Build your own options:</p>
-    <pre><code>let options = BuildOptions {
-    minify: true,
+    <pre><code>use bundla::{BuildOptions, Minify};
+
+let options = BuildOptions {
+    minify: Minify::ALL,
     sourcemap: true,
     hash: false,
     base: None,
 };</code></pre>
+    <p><code>BuildOptions::minify</code> is a set of targets:</p>
+    <pre><code>use bundla::Minify;
 
-    <h3>3. Watch and rebuild, headless</h3>
+// minify everything (the prod default)
+let all = Minify::ALL;
+
+// minify css and js, keep the html untouched
+let assets = Minify::CSS | Minify::JS;
+
+// parse the CLI form
+let targets: Minify = "css,js".parse().unwrap();</code></pre>
+
+    <h3>3. Watch and rebuild, no serve</h3>
     <pre><code>use std::path::Path;
 use tokio::sync::broadcast;
 use bundla::{BuildOptions, WatchLog, Watch, watch};
@@ -270,7 +298,7 @@ watcher.run().await?; // rebuilds until the future is dropped</code></pre>
       server.
     </p>
 
-    <h3>4. Dev build with live reload server</h3>
+    <h3>4. Watch, rebuild and serve (live reload)</h3>
     <pre><code>use std::net::IpAddr;
 use std::path::Path;
 use tokio::sync::broadcast;
@@ -303,28 +331,33 @@ tokio::spawn(async move {
 
 server.run().await?; // blocks until shutdown</code></pre>
     <p>
-      The served prefix must match the build prefix. When building and serving
-      manually, pass <code>options.server_base()</code> to
-      <code>ServerConfig.base</code>. This converts the <code>Option</code> to a
-      <code>String</code> and ensures consistency. With <code>watch_serve</code>,
-      <code>config.base</code> is ignored and overwritten by
-      <code>options.base</code> using <code>options.server_base()</code>.
+      The served prefix <code>ServerConfig.base</code> has to match the build
+      prefix <code>BuildOptions.base</code>.
+    </p>
+    <p>
+      When building and serving manually, use
+      <code>BuildOptions.server_base()</code> to populate
+      <code>ServerConfig.base</code> (<code>String</code>) from
+      <code>options.base</code> (<code>Option</code>) and ensure consistency.
+    </p>
+    <p>
+      In <code>watch_serve</code>, <code>ServerConfig.base</code> is ignored and
+      overwritten by <code>BuildOptions.base</code> using
+      <code>BuildOptions.server_base()</code>.
     </p>
 
     <h3>Feature flag</h3>
-    <p>
-      The <code>serve</code> feature (on by default):
-    </p>
+    <p>The default features:</p>
     <ul>
-      <li>is required for: <code>serve</code>, <code>watch_serve</code>,
-        <code>Server</code>, and <code>ServerConfig</code>,
+      <li>are required for: <code>serve</code>, <code>watch_serve</code>,
+        <code>Server</code> and <code>ServerConfig</code>,
       </li>
-      <li>is not required for: <code>build</code>, <code>watch</code>, <code>Watch</code>,
-        <code>WatchLog</code>, and <code>BuildOptions</code>.
+      <li>are not required for: <code>build</code>, <code>watch</code>, <code>Watch</code>,
+        <code>WatchLog</code>, <code>Minify</code> and <code>BuildOptions</code>.
       </li>
     </ul>
     <p>To build or watch without the server (and drop the axum dependency):</p>
-    <pre><code>bundla = { version = "0.5", default-features = false }</code></pre>
+    <pre><code>bundla = { version = "0.6", default-features = false }</code></pre>
 
     <h2 id="local-installation">Local installation</h2>
     <pre><code># clone the repo
@@ -348,6 +381,23 @@ bundla
 
 # update later after source changes
 cargo install --path . --locked --force</code></pre>
+
+    <h2 id="known-bug">Known bug</h2>
+
+    <h3>HTML minification and templates</h3>
+    <p>
+      HTML is minified by
+      <a href="https://crates.io/crates/minify-html">minify-html</a>, which
+      parses the inside of a start tag as an attribute list. Template tags
+      placed between attributes can therefore be corrupted. This is an upstream
+      bug in minify-html, not a bundla limitation:
+      <a href="https://github.com/wilsonzlin/minify-html/issues/232">wilsonzlin/minify-html#232</a>.
+    </p>
+    <p>
+      If your templates place tags inside HTML start tags (e.g. conditional
+      boolean attributes), leave the html target out for now:
+    </p>
+    <pre><code>bundla --minify css,js</code></pre>
 
     <h2 id="version-history">Version history</h2>
     <button id="load-commits" type="button">Load commits</button>

@@ -1,12 +1,11 @@
 [package]
 name = "bundla"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 description = "Bundle HTML, CSS, and JS/TS: prod build with minification and hashed filenames by default, dev build with sourcemaps, composable watch and serve"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/francoisromain/bundla"
-homepage = "https://github.com/francoisromain/bundla"
 documentation = "https://docs.rs/bundla"
 rust-version = "1.97.1"
 keywords = ["bundle", "live-reload", "web", "development", "watch"]

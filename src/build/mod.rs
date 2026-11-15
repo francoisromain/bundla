@@ -5,8 +5,10 @@ mod static_assets;
 
 use std::{
     collections::HashMap,
-    fs,
+    fmt, fs,
+    ops::BitOr,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use walkdir::WalkDir;
@@ -16,11 +18,150 @@ use html::{html_asset_refs_extract, html_minify, html_rewrite};
 use path::{asset_ref_path_resolve, asset_ref_rewrite, dist_guard};
 use static_assets::static_asset_copy;
 
+/// Set of output targets to minify.
+///
+/// Combine targets with `|`, or parse the comma-separated form used by the
+/// CLI (`"css,js"`, `"all"`, `"none"`):
+///
+/// ```
+/// use bundla::Minify;
+///
+/// let targets = Minify::CSS | Minify::JS;
+/// assert!(targets.contains(Minify::CSS));
+/// assert!(!targets.contains(Minify::HTML));
+///
+/// assert_eq!("css,js".parse::<Minify>().unwrap(), targets);
+/// assert_eq!("all".parse::<Minify>().unwrap(), Minify::ALL);
+/// assert_eq!("none".parse::<Minify>().unwrap(), Minify::NONE);
+/// ```
+///
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Minify(u8);
+
+impl Minify {
+    /// Minify nothing.
+    pub const NONE: Minify = Minify(0);
+    /// Minify css.
+    pub const CSS: Minify = Minify(1 << 0);
+    /// Minify js.
+    pub const JS: Minify = Minify(1 << 1);
+    /// Minify the output html.
+    pub const HTML: Minify = Minify(1 << 2);
+    /// Minify css, js, and the output html.
+    pub const ALL: Minify = Minify(0b111);
+
+    /// True when every target in `targets` is enabled.
+    ///
+    /// `NONE` is a subset of every set, so `NONE.contains(NONE)` is true.
+    pub const fn contains(self, targets: Minify) -> bool {
+        self.0 & targets.0 == targets.0
+    }
+
+    /// Combine two target sets.
+    ///
+    /// Useful in const contexts, where the `|` operator is not available.
+    pub const fn union(self, other: Minify) -> Minify {
+        Minify(self.0 | other.0)
+    }
+
+    /// True when no target is enabled.
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// True when every target is enabled.
+    pub const fn is_all(self) -> bool {
+        self.0 == Minify::ALL.0
+    }
+}
+
+impl BitOr for Minify {
+    type Output = Minify;
+
+    fn bitor(self, other: Minify) -> Minify {
+        self.union(other)
+    }
+}
+
+impl FromStr for Minify {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Err("must not be empty (expected: css, js, html, all, none)".into());
+        }
+
+        let parts: Vec<&str> = value.split(',').map(str::trim).collect();
+        if parts.len() > 1 {
+            for part in &parts {
+                if part.eq_ignore_ascii_case("all") || part.eq_ignore_ascii_case("none") {
+                    return Err(format!(
+                        "{:?} cannot be combined with other targets",
+                        part.to_ascii_lowercase()
+                    ));
+                }
+            }
+        }
+
+        let mut targets = Minify::NONE;
+        for part in parts {
+            let target = match part.to_ascii_lowercase().as_str() {
+                "css" => Minify::CSS,
+                "js" => Minify::JS,
+                "html" => Minify::HTML,
+                "all" => Minify::ALL,
+                "none" => Minify::NONE,
+                other => {
+                    return Err(format!(
+                        "unknown minify target {other:?} (expected: css, js, html, all, none)"
+                    ));
+                }
+            };
+            targets = targets.union(target);
+        }
+
+        Ok(targets)
+    }
+}
+
+impl fmt::Display for Minify {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_empty() {
+            return f.write_str("none");
+        }
+        if self.is_all() {
+            return f.write_str("all");
+        }
+
+        let mut first = true;
+        for (target, name) in [
+            (Minify::CSS, "css"),
+            (Minify::JS, "js"),
+            (Minify::HTML, "html"),
+        ] {
+            if self.contains(target) {
+                if !first {
+                    f.write_str(",")?;
+                }
+                f.write_str(name)?;
+                first = false;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Build options for the HTML, CSS, JS/TS output.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct BuildOptions {
-    /// Minify the css, js, and output html.
-    pub minify: bool,
+    /// Output targets to minify: css, js, and/or html.
+    ///
+    /// Leave out [`Minify::HTML`] for server-rendered templates: html
+    /// minification can corrupt template tags placed between start-tag
+    /// attributes (upstream `minify-html` bug #232).
+    pub minify: Minify,
     /// Emit `.map` sourcemap files next to the output.
     pub sourcemap: bool,
     /// Add a hash to output filenames (`main-<hash>.css`, `main-<hash>.js`).
@@ -38,13 +179,13 @@ impl BuildOptions {
     /// ```
     /// use bundla::BuildOptions;
     ///
-    /// assert!(!BuildOptions::DEV.minify);
+    /// assert!(BuildOptions::DEV.minify.is_empty());
     /// assert!(BuildOptions::DEV.sourcemap);
     /// assert!(!BuildOptions::DEV.hash);
     /// assert!(BuildOptions::DEV.base.is_none());
     /// ```
     pub const DEV: BuildOptions = BuildOptions {
-        minify: false,
+        minify: Minify::NONE,
         sourcemap: true,
         hash: false,
         base: None,
@@ -55,13 +196,13 @@ impl BuildOptions {
     /// ```
     /// use bundla::BuildOptions;
     ///
-    /// assert!(BuildOptions::PROD.minify);
+    /// assert!(BuildOptions::PROD.minify.is_all());
     /// assert!(!BuildOptions::PROD.sourcemap);
     /// assert!(BuildOptions::PROD.hash);
     /// assert!(BuildOptions::PROD.base.is_none());
     /// ```
     pub const PROD: BuildOptions = BuildOptions {
-        minify: true,
+        minify: Minify::ALL,
         sourcemap: false,
         hash: true,
         base: None,
@@ -256,8 +397,8 @@ async fn page_bundle(
     }
 
     let html = html_rewrite(&html, &asset_ref_rewritten_map)?;
-    let html = if options.minify {
-        html_minify(&html)?
+    let html = if options.minify.contains(Minify::HTML) {
+        html_minify(&html, options.minify)?
     } else {
         html
     };

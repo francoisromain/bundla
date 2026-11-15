@@ -22,8 +22,9 @@ Built with Rust on the [webadev](https://crates.io/crates/webadev) server.
 ## Conventions
 
 - Every `.html` file under `src` is a page entry, mirrored to `dev`/`dist`.
-- `<link rel="stylesheet">`, css `@import` and `<script type="module">` references are bundled (one output per asset, cached across pages) and rewritten in place.
+- `<link rel="stylesheet">`, CSS `@import` and `<script type="module">` references are bundled (one output per asset, cached across pages) and rewritten in place.
 - `type="module"` is required for scripts.
+- TypeScript entries work (e.g. ./scripts.ts). The rewritten ref is .js (scripts.js in dev, scripts-<hash>.js in prod).
 - `?query`/`#fragment` suffixes on references are preserved.
 - By default, remote and root-relative URLs are left unchanged and resolved by the browser.
 - Option (`--base`) to bundle and rewrite root-relative references starting with the base prefix.
@@ -42,6 +43,7 @@ bundla
 ### Options
 
 - `--dev` / `-d`: dev build, unminified with sourcemaps, output dir `dev/`.
+- `--minify <targets>`: comma-separated output targets to minify: `css`, `js`, `html`, or `all` / `none` (default: `all` for prod builds, `none` with `--dev`). There is a [known bug](#known-bug) for templates.
 - `--watch` / `-w`: rebuild on every change to `src/`.
 - `--serve` / `-s`: build once, then serve the output directory.
 - `--src <dir>`: source directory (default: `src`).
@@ -78,6 +80,9 @@ bundla --base /app
 
 # same, served under /app
 bundla -s --base /app
+
+# prod build for a server-rendered template: minify css/js, keep the html
+bundla --minify css,js
 ```
 
 Dev build
@@ -117,11 +122,11 @@ server.run().await?;
 
 `ServerConfig` and `Server` are re-exported from [webadev](https://crates.io/crates/webadev).
 
-Set `config.base` to a URL prefix (e.g. `"/app"`) to serve under it; the empty string serves at the root.
+Set `config.base` to a URL prefix (e.g. `"/app"`) to serve under it. An empty string serves at the root.
 
-Use `0` as `config.port` to let the OS pick a free port (visible in `server.url`).
+Use `0` as `config.port` to let the OS pick a free port (actual port visible in `server.url`).
 
-### 2. Build
+### 2. Build only
 
 ```rust
 use std::path::Path;
@@ -133,14 +138,14 @@ for warning in warnings {
 }
 ```
 
-On success, `build` returns the warnings collected during the build (unreadable assets, non-module scripts, bundler warnings); displaying them is up to you.
+On success, `build` returns the warnings collected during the build (unreadable assets, non-module scripts, bundler warnings).
 
 `BuildOptions` presets:
 
-- `BuildOptions::DEV`: unminified, with sourcemaps, no hashed filenames.
-- `BuildOptions::PROD`: minified, hashed filenames, no sourcemaps.
+- `BuildOptions::DEV`: no minification, with sourcemaps, no hashed filenames.
+- `BuildOptions::PROD`: minifies CSS, JS, and HTML, hashed filenames, no sourcemaps.
 
-Combine a preset with a base:
+Combine a `BuildOptions` preset with a base:
 
 ```rust
 let options = BuildOptions {
@@ -152,15 +157,32 @@ let options = BuildOptions {
 Build your own options:
 
 ```rust
+use bundla::{BuildOptions, Minify};
+
 let options = BuildOptions {
-    minify: true,
+    minify: Minify::ALL,
     sourcemap: true,
     hash: false,
     base: None,
 };
 ```
 
-### 3. Watch and rebuild, headless
+`BuildOptions::minify` is a set of targets:
+
+```rust
+use bundla::Minify;
+
+// minify everything (the prod default)
+let all = Minify::ALL;
+
+// minify css and js, keep the html untouched
+let assets = Minify::CSS | Minify::JS;
+
+// parse the CLI form
+let targets: Minify = "css,js".parse().unwrap();
+```
+
+### 3. Watch and rebuild, no serve
 
 ```rust
 use std::path::Path;
@@ -189,7 +211,7 @@ watcher.run().await?; // rebuilds until the future is dropped
 
 `Watch` is the handle returned by `watch`. `watch_serve` below runs the same rebuild loop behind the server.
 
-### 4. Dev build with live reload server
+### 4. Watch, rebuild and serve (live reload)
 
 ```rust
 use std::net::IpAddr;
@@ -225,19 +247,22 @@ tokio::spawn(async move {
 server.run().await?; // blocks until shutdown
 ```
 
-The served prefix must match the build prefix. When building and serving manually, pass `options.server_base()` to `ServerConfig.base`. This converts the `Option` to a `String` and ensures consistency.
-With `watch_serve`, `config.base` is ignored and overwritten by `options.base` using `options.server_base()`.
+The served prefix `ServerConfig.base` has to match the build prefix `BuildOptions.base`.
+
+When building and serving manually, use `BuildOptions.server_base()` to populate `ServerConfig.base` (`String`) from `options.base` (`Option`) and ensure consistency.
+
+In `watch_serve`, `ServerConfig.base` is ignored and overwritten by `BuildOptions.base` using `BuildOptions.server_base()`.
 
 ### Feature flag
 
-The `serve` feature (on by default):
-- is required for: `serve`, `watch_serve`, `Server`, and `ServerConfig`,
-- is not required for: `build`, `watch`, `Watch`, `WatchLog`, and `BuildOptions`.
+The default features:
+- are required for: `serve`, `watch_serve`, `Server` and `ServerConfig`,
+- are not required for: `build`, `watch`, `Watch`, `WatchLog`, `Minify` and `BuildOptions`.
 
-To build or watch without the server (and drop the axum dependency):
+To `build` or `watch` without the server (and drop the axum dependency):
 
 ```toml
-bundla = { version = "0.5", default-features = false }
+bundla = { version = "0.6", default-features = false }
 ```
 
 ## Local installation
@@ -264,4 +289,16 @@ bundla
 
 # update later after source changes
 cargo install --path . --locked --force
+```
+
+## Known bug
+
+### HTML minification and templates
+
+HTML is minified by [minify-html](https://crates.io/crates/minify-html), which parses the inside of a start tag as an attribute list. Template tags placed between attributes can therefore be corrupted. This is an upstream bug in minify-html, not a bundla limitation: [wilsonzlin/minify-html#232](https://github.com/wilsonzlin/minify-html/issues/232).
+
+If your templates place tags inside HTML start tags (e.g. conditional boolean attributes), leave the `html` target out for now:
+
+```bash
+bundla --minify css,js
 ```

@@ -55,6 +55,57 @@ fn invalid_port_rejected() {
     );
 }
 
+#[test]
+fn help_documents_minify_targets() {
+    let out = run(&["--help"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("--minify <TARGETS>"), "got: {stdout}");
+    assert!(stdout.contains("css, js, html"), "got: {stdout}");
+}
+
+#[test]
+fn invalid_minify_target_rejected() {
+    let out = run(&["--minify", "js,htlm"]);
+    assert_eq!(out.status.code(), Some(2), "clap parse errors exit 2");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("unknown minify target"), "got: {stderr}");
+    assert!(stderr.contains("css, js, html"), "got: {stderr}");
+}
+
+// `--minify css,js`: css/js keep the prod treatment (hashed, minified), the
+// html is left untouched so template tags between attributes survive the
+// upstream minify-html start-tag bug
+#[test]
+fn minify_targets_leave_html_untouched() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(src.join("styles")).unwrap();
+    fs::write(
+        src.join("index.html"),
+        r#"<html><head><link rel="stylesheet" href="./styles/main.css" /></head><body><input {% if x %}checked{% endif %}></body></html>"#,
+    )
+    .unwrap();
+    fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
+    let dist = dir.path().join("out");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let out = run(&["--minify", "css,js", "--src", &src_arg, "--dist", &dist_arg]);
+
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let css = hashed_css_name(&dist.join("styles"));
+    assert!(css.starts_with("main-"), "got: {css}");
+
+    let html = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(html.contains("{% if x %}checked{% endif %}"), "got: {html}");
+    assert!(html.contains(&css), "got: {html}");
+}
+
 // Server-only flags are rejected at parse time without --serve
 #[test]
 fn server_flags_require_serve() {

@@ -2,7 +2,10 @@ use std::{fs, path::Path};
 
 use rolldown::{Bundler, BundlerOptions, InputItem, OutputFormat, RawMinifyOptions, SourceMapType};
 
-use super::{super::BuildOptions, dist_mkdir, file_name_output_format, file_stem_extract};
+use super::{
+    super::{BuildOptions, Minify},
+    dist_mkdir, file_name_output_format, file_stem_extract,
+};
 
 pub async fn js_bundle(
     source: &Path,
@@ -25,7 +28,7 @@ pub async fn js_bundle(
         }]),
         cwd: Some(src.to_path_buf()),
         format: Some(OutputFormat::Esm),
-        minify: Some(RawMinifyOptions::Bool(options.minify)),
+        minify: Some(RawMinifyOptions::Bool(options.minify.contains(Minify::JS))),
         sourcemap: options.sourcemap.then_some(SourceMapType::File),
         ..BundlerOptions::default()
     })

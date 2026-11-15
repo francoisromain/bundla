@@ -109,7 +109,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::super::BuildOptions;
+    use super::super::{BuildOptions, Minify};
     use super::*;
 
     #[test]
@@ -275,7 +275,7 @@ mod tests {
         fs::write(scripts.join("app.js"), "console.log('hi');\n").unwrap();
 
         let options = BuildOptions {
-            minify: true,
+            minify: Minify::ALL,
             sourcemap: true,
             hash: true,
             base: None,
