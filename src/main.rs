@@ -16,17 +16,17 @@ use bundla::{
 )]
 struct Args {
     /// Source directory
-    #[arg(long, default_value = "src")]
+    #[arg(long, default_value = "src", value_name = "DIR")]
     src: PathBuf,
 
     /// Output directory (default: dist/, or dev/ with --dev)
-    #[arg(long)]
+    #[arg(long, value_name = "DIR")]
     dist: Option<PathBuf>,
 
     /// URL prefix where the output is served (e.g. `/app`; must start with `/`)
     /// Root-relative references starting with this base
     /// are bundled and rewritten with the prefix
-    #[arg(long, value_parser = base_parse)]
+    #[arg(long, value_parser = base_parse, value_name = "PREFIX")]
     base: Option<String>,
 
     /// Dev build: unminified with sourcemaps (default output: dev/)

@@ -93,23 +93,18 @@ impl FromStr for Minify {
         }
 
         let parts: Vec<&str> = value.split(',').map(str::trim).collect();
-        if parts.len() > 1 {
-            for part in &parts {
-                if part.eq_ignore_ascii_case("all") || part.eq_ignore_ascii_case("none") {
-                    return Err(format!(
-                        "{:?} cannot be combined with other targets",
-                        part.to_ascii_lowercase()
-                    ));
-                }
-            }
-        }
+        let multiple = parts.len() > 1;
 
         let mut targets = Minify::NONE;
         for part in parts {
-            let target = match part.to_ascii_lowercase().as_str() {
+            let lower = part.to_ascii_lowercase();
+            let target = match lower.as_str() {
                 "css" => Minify::CSS,
                 "js" => Minify::JS,
                 "html" => Minify::HTML,
+                "all" | "none" if multiple => {
+                    return Err(format!("{lower:?} cannot be combined with other targets"));
+                }
                 "all" => Minify::ALL,
                 "none" => Minify::NONE,
                 other => {
@@ -134,18 +129,15 @@ impl fmt::Display for Minify {
             return f.write_str("all");
         }
 
-        let mut first = true;
+        let mut sep = "";
         for (target, name) in [
             (Minify::CSS, "css"),
             (Minify::JS, "js"),
             (Minify::HTML, "html"),
         ] {
             if self.contains(target) {
-                if !first {
-                    f.write_str(",")?;
-                }
-                f.write_str(name)?;
-                first = false;
+                write!(f, "{sep}{name}")?;
+                sep = ",";
             }
         }
 
