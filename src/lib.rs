@@ -2,6 +2,7 @@
 //! - Prod build `src/` into `dist/` with minification and hashed filenames,
 //! - Dev build `src/` into `dev/` with sourcemaps,
 //! - Option to watch and rebuild on change,
+//! - Option to filter watched files by name or suffix (`--filter html,css`),
 //! - Option to serve the bundle.
 //!
 //! Serving is optional: the `serve` feature is on by default, and

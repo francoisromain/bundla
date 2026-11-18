@@ -65,6 +65,14 @@ fn help_documents_minify_targets() {
 }
 
 #[test]
+fn help_documents_watch_filter() {
+    let out = run(&["--help"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("--filter <SUFFIXES>"), "got: {stdout}");
+}
+
+#[test]
 fn invalid_minify_target_rejected() {
     let out = run(&["--minify", "js,htlm"]);
     assert_eq!(out.status.code(), Some(2), "clap parse errors exit 2");
@@ -129,6 +137,37 @@ fn server_flags_require_serve() {
         );
         assert!(stderr.contains("--serve"), "got: {stderr}");
     }
+}
+
+// `--filter` only makes sense while watching
+#[test]
+fn filter_requires_watch() {
+    let out = run(&["--filter", "html"]);
+    assert_eq!(out.status.code(), Some(2), "clap requires errors exit 2");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--watch"), "got: {stderr}");
+}
+
+// Invalid filter values fail at runtime, inside `webadev::watch`
+#[test]
+fn invalid_filter_rejected_at_runtime() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), "<html></html>").unwrap();
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dir.path().join("out").to_string_lossy().to_string();
+
+    let out = run(&[
+        "-w", "--filter", ".html", "--src", &src_arg, "--dist", &dist_arg,
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("failed to watch"), "got: {stderr}");
+    assert!(
+        stderr.contains("must not start with a dot"),
+        "got: {stderr}"
+    );
 }
 
 // Poll until `path` exists and contains `needle`, or give up on timeout
@@ -337,6 +376,56 @@ fn dev_watch_rebuilds_without_injection() {
     assert!(!html.contains("EventSource"), "got: {html}");
     assert!(!html.contains("livereload"), "got: {html}");
     assert_eq!(html.matches("<script").count(), 0, "got: {html}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+// `-w --filter html`: a .txt edit is ignored, an .html edit rebuilds
+#[test]
+fn watch_filter_ignores_other_extensions() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), "<html><body>v1</body></html>").unwrap();
+    fs::write(src.join("data.txt"), "v1").unwrap();
+    let dist = dir.path().join("out");
+    let out_html = dist.join("index.html");
+    let out_txt = dist.join("data.txt");
+
+    let src_arg = src.to_string_lossy().to_string();
+    let dist_arg = dist.to_string_lossy().to_string();
+    let mut child = bin()
+        .args([
+            "-dw", "--filter", "html", "--src", &src_arg, "--dist", &dist_arg,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    assert!(
+        wait_contains(&out_html, "v1", Duration::from_secs(60)),
+        "initial build missing"
+    );
+    assert!(
+        wait_contains(&out_txt, "v1", Duration::from_secs(60)),
+        "initial static copy missing"
+    );
+
+    fs::write(src.join("data.txt"), "v2").unwrap();
+    thread::sleep(Duration::from_millis(1000));
+    assert_eq!(
+        fs::read_to_string(&out_txt).unwrap(),
+        "v1",
+        "a filtered-out change must not rebuild"
+    );
+
+    fs::write(src.join("index.html"), "<html><body>v2</body></html>").unwrap();
+    assert!(
+        wait_contains(&out_html, "v2", Duration::from_secs(60)),
+        "rebuild after change missing"
+    );
 
     child.kill().unwrap();
     child.wait().unwrap();

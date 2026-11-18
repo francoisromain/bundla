@@ -54,6 +54,9 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
 /// - serve it with live reload.
 ///
 /// `options` selects the build profile.
+/// `filter` narrows the rebuild to files whose name matches an item; see
+/// [`watch`](crate::watch) for the matching rules. An empty `filter`
+/// watches every file.
 /// `config.base` is ignored and overwritten by `options.base`
 /// so the served prefix matches the build prefix.
 ///
@@ -99,7 +102,7 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
 ///     };
 ///
 ///     let (tx_log, _rx_log) = tokio::sync::broadcast::channel(100);
-///     let server = watch_serve(Path::new(&src), &config, &BuildOptions::DEV, tx_log)
+///     let server = watch_serve(Path::new(&src), &config, &BuildOptions::DEV, tx_log, &[])
 ///         .await
 ///         .unwrap();
 ///     let url = server.url.clone();
@@ -117,6 +120,7 @@ pub async fn watch_serve(
     config: &Config,
     options: &BuildOptions,
     tx_log: Sender<WatchLog>,
+    filter: &[&str],
 ) -> Result<Server, String> {
     // Dist-change events: when a build updates files in the dist directory
     // triggers a browser reload
@@ -128,7 +132,15 @@ pub async fn watch_serve(
     config.base = options.server_base();
 
     // Watch `src`, build once on startup
-    let watcher = watch_setup(src, &config.dir, options, tx_log, Some(tx_dist.clone())).await?;
+    let watcher = watch_setup(
+        src,
+        &config.dir,
+        options,
+        tx_log,
+        filter,
+        Some(tx_dist.clone()),
+    )
+    .await?;
 
     let server = Server::bind(tx_dist.clone(), config)
         .await

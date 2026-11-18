@@ -37,6 +37,12 @@ pub struct Watch {
 /// Watch `src` and rebuild it into `dist` on startup and on every
 /// change, without serving. Headless: no server, no port, no browser.
 ///
+/// `filter` narrows the rebuild to files whose name matches an item, e.g.
+/// `&["html", "css", "one-file.html"]`. An item matches when the file name
+/// equals `<item>` or ends with `.<item>`. Items are trimmed and lowercased,
+/// a leading dot or path separator is rejected, and empty items are ignored.
+/// An empty `filter` (including `&[""]`) watches every file under `src`.
+///
 /// The first build runs before `watch` returns, so a failure aborts
 /// with `Err`. Afterwards every detected change triggers a rebuild; a
 /// failed rebuild is reported on `tx_log` as [`WatchLog::Error`] and the
@@ -65,7 +71,10 @@ pub struct Watch {
 ///
 ///     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
 ///     let dist = dir.path().join("dev");
-///     let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log).await.unwrap();
+///     // rebuild on `.html` changes only; `&[]` watches every file
+///     let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &["html"])
+///         .await
+///         .unwrap();
 ///
 ///     // `src` is built once before `watch` returns
 ///     assert!(std::fs::read_to_string(dist.join("index.html")).unwrap().contains("v1"));
@@ -81,14 +90,17 @@ pub async fn watch(
     dist: &Path,
     options: &BuildOptions,
     tx_log: Sender<WatchLog>,
+    filter: &[&str],
 ) -> Result<Watch, String> {
-    watch_setup(src, dist, options, tx_log, None).await
+    watch_setup(src, dist, options, tx_log, filter, None).await
 }
 
 // Shared by `watch` and the server `watch_serve`:
 // - start the filesystem watcher on `src`
 // - build once on startup
 // - keep the change receiver for the rebuild loop (`Watch::run`)
+//
+// `filter`: watched file name suffixes; empty watches every file.
 //
 // `tx_dist`:
 // - forwards dist-change events to the server (browser reload),
@@ -98,12 +110,13 @@ pub(crate) async fn watch_setup(
     dist: &Path,
     options: &BuildOptions,
     tx_log: Sender<WatchLog>,
+    filter: &[&str],
     tx_dist: Option<Sender<(ReloadType, Vec<PathBuf>)>>,
 ) -> Result<Watch, String> {
     // Src-change events: when the user updates files in the src directory
     let (tx_src, rx_src) = broadcast::channel(100);
 
-    webadev::watch(tx_src, src)
+    webadev::watch(tx_src, src, filter)
         .map_err(|err| format!("failed to watch {}: {err}", src.display()))?;
 
     // Build once on startup

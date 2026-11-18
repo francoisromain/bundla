@@ -15,6 +15,7 @@ Bundle HTML, CSS, and JS/TS for prod or dev with live-reload.
 - Prod build `src/` into `dist/` with minification and hashed filenames,
 - Dev build `src/` into `dev/` unminified with sourcemaps,
 - Option to watch and rebuild on change,
+- Option to filter watched files by name or suffix (`--filter html,css`),
 - Option to serve the bundle.
 
 Built with Rust on the [webadev](https://crates.io/crates/webadev) server.
@@ -45,6 +46,7 @@ bundla
 - `--dev` / `-d`: dev build, unminified with sourcemaps, output dir `dev/`.
 - `--minify <targets>`: comma-separated output targets to minify: `css`, `js`, `html`, or `all` / `none` (default: `all` for prod builds, `none` with `--dev`). There is a [known bug](#known-bug) for templates.
 - `--watch` / `-w`: rebuild on every change to `src/`.
+- `--filter <suffixes>`: comma-separated file name suffixes to watch (requires `--watch`; default: all files; e.g. `--filter html,css` or `--filter one-file.html`). An item matches when the file name equals `<item>` or ends with `.<item>`. Items are lowercased, a leading dot or path separator is rejected, and empty items are ignored.
 - `--serve` / `-s`: build once, then serve the output directory.
 - `--src <dir>`: source directory (default: `src`).
 - `--dist <dir>`: output directory (default: `dist/`, or `dev/` with `--dev`).
@@ -65,6 +67,9 @@ Prod build
 ```bash
 # prod build, watch `src/` and rebuild on change
 bundla -w
+
+# watch only html/css/js changes (static assets are copied on those rebuilds)
+bundla -w --filter html,css,js
 
 # prod build once, then serve the output
 bundla -s
@@ -191,9 +196,16 @@ use bundla::{BuildOptions, WatchLog, Watch, watch};
 
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
-// Build `src/` into `dev/` on startup, then on every change
-// no server, no port, no browser
-let watcher = watch(Path::new("src"), Path::new("dev"), &BuildOptions::DEV, tx_log).await?;
+// Build `src/` into `dev/` on startup, then on every change of an
+// `.html`, `.css` or `.js` file; pass `&[]` to watch every file
+let watcher = watch(
+    Path::new("src"),
+    Path::new("dev"),
+    &BuildOptions::DEV,
+    tx_log,
+    &["html", "css", "js"],
+)
+.await?;
 
 // runtime logs are reported on your broadcast channel:
 // - `WatchLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
@@ -209,7 +221,7 @@ tokio::spawn(async move {
 watcher.run().await?; // rebuilds until the future is dropped
 ```
 
-`Watch` is the handle returned by `watch`. `watch_serve` below runs the same rebuild loop behind the server.
+`Watch` is the handle returned by `watch`. `watch_serve` below runs the same rebuild loop behind the server, with the same name/suffix filter (`&[]` watches every file).
 
 ### 4. Watch, rebuild and serve (live reload)
 
@@ -234,8 +246,8 @@ let config = ServerConfig {
 // - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
-// `BuildOptions::DEV` for the dev loop
-let server = watch_serve(Path::new("src"), &config, &BuildOptions::DEV, tx_log).await?;
+// `BuildOptions::DEV` for the dev loop; `&[]` watches every file
+let server = watch_serve(Path::new("src"), &config, &BuildOptions::DEV, tx_log, &[]).await?;
 println!("Starting development server at {}", server.url);
 
 tokio::spawn(async move {
@@ -262,7 +274,7 @@ The default features:
 To `build` or `watch` without the server (and drop the axum dependency):
 
 ```toml
-bundla = { version = "0.6", default-features = false }
+bundla = { version = "0.7", default-features = false }
 ```
 
 ## Local installation

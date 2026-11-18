@@ -56,7 +56,7 @@ async fn watch_builds_on_startup_and_rebuilds_on_change() {
     fs::write(src.join("index.html"), page("v1")).unwrap();
 
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
-    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log)
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &[])
         .await
         .unwrap();
 
@@ -95,7 +95,7 @@ async fn watch_keeps_previous_output_on_failed_rebuild() {
     fs::write(src.join("index.html"), page("v1")).unwrap();
 
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
-    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log)
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &[])
         .await
         .unwrap();
     let handle = tokio::spawn(watcher.run());
@@ -129,10 +129,160 @@ async fn watch_missing_src_errs() {
     let dist = dir.path().join("dev");
 
     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
-    let err = watch(&src, &dist, &BuildOptions::DEV, tx_log)
+    let err = watch(&src, &dist, &BuildOptions::DEV, tx_log, &[])
         .await
         .unwrap_err();
     assert!(err.contains("failed to watch"), "got: {err}");
+}
+
+// No filter: every file under src triggers a rebuild (static assets included)
+#[tokio::test]
+async fn watch_watches_every_file_by_default() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    let dist = dir.path().join("dev");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), page("v1")).unwrap();
+    fs::write(src.join("data.txt"), "v1").unwrap();
+
+    let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &[])
+        .await
+        .unwrap();
+    assert_eq!(read(&dist.join("data.txt")), "v1");
+
+    let handle = tokio::spawn(watcher.run());
+    fs::write(src.join("data.txt"), "v2").unwrap();
+    wait_contains(&dist.join("data.txt"), "v2").await;
+
+    handle.abort();
+}
+
+// With a filter, an unlisted extension is ignored while a listed one rebuilds
+#[tokio::test]
+async fn watch_filter_ignores_unlisted_extensions() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    let dist = dir.path().join("dev");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), page("v1")).unwrap();
+    fs::write(src.join("data.txt"), "v1").unwrap();
+
+    let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &["html"])
+        .await
+        .unwrap();
+    let handle = tokio::spawn(watcher.run());
+
+    fs::write(src.join("data.txt"), "v2").unwrap();
+    sleep(Duration::from_millis(1000)).await;
+    assert_eq!(
+        read(&dist.join("data.txt")),
+        "v1",
+        "a filtered-out change must not rebuild"
+    );
+
+    fs::write(src.join("index.html"), page("v2")).unwrap();
+    wait_contains(&dist.join("index.html"), "v2").await;
+
+    handle.abort();
+}
+
+// Filter values are lowercased, on both sides
+#[tokio::test]
+async fn watch_filter_matches_case_insensitively() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    let dist = dir.path().join("dev");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), page("v1")).unwrap();
+    fs::write(src.join("data.txt"), "v1").unwrap();
+
+    let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &["TXT"])
+        .await
+        .unwrap();
+    let handle = tokio::spawn(watcher.run());
+
+    fs::write(src.join("data.txt"), "v2").unwrap();
+    wait_contains(&dist.join("data.txt"), "v2").await;
+
+    handle.abort();
+}
+
+// A filter item also matches an exact file name, not only an extension
+#[tokio::test]
+async fn watch_filter_matches_exact_file_name() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    let dist = dir.path().join("dev");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), page("v1")).unwrap();
+    fs::write(src.join("data.txt"), "v1").unwrap();
+    fs::write(src.join("other.txt"), "v1").unwrap();
+
+    let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &["data.txt"])
+        .await
+        .unwrap();
+    let handle = tokio::spawn(watcher.run());
+
+    fs::write(src.join("other.txt"), "v2").unwrap();
+    sleep(Duration::from_millis(1000)).await;
+    assert_eq!(
+        read(&dist.join("other.txt")),
+        "v1",
+        "`data.txt` must not match `other.txt`"
+    );
+
+    fs::write(src.join("data.txt"), "v2").unwrap();
+    wait_contains(&dist.join("data.txt"), "v2").await;
+
+    handle.abort();
+}
+
+// `&[""]` means "watch all", like `&[]`
+#[tokio::test]
+async fn watch_filter_empty_string_watches_all() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    let dist = dir.path().join("dev");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), page("v1")).unwrap();
+    fs::write(src.join("data.txt"), "v1").unwrap();
+
+    let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
+    let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &[""])
+        .await
+        .unwrap();
+    let handle = tokio::spawn(watcher.run());
+
+    fs::write(src.join("data.txt"), "v2").unwrap();
+    wait_contains(&dist.join("data.txt"), "v2").await;
+
+    handle.abort();
+}
+
+// Invalid filter values are reported by `watch`, not silently ignored
+#[tokio::test]
+async fn watch_filter_rejects_invalid_values() {
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("src");
+    let dist = dir.path().join("dev");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("index.html"), page("v1")).unwrap();
+
+    for (filter, expected) in [
+        (".html", "must not start with a dot"),
+        ("src/index.html", "must not contain a path separator"),
+    ] {
+        let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
+        let err = watch(&src, &dist, &BuildOptions::DEV, tx_log, &[filter])
+            .await
+            .unwrap_err();
+        assert!(err.contains("failed to watch"), "got: {err}");
+        assert!(err.contains(expected), "filter {filter:?}: got: {err}");
+    }
 }
 
 // A hashed profile (`-sw`) must reload the full page on css edits: css
@@ -163,7 +313,7 @@ async fn watch_serve_hashed_css_change_reloads_full_page() {
     };
 
     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
-    let server = watch_serve(&src, &config, &BuildOptions::PROD, tx_log)
+    let server = watch_serve(&src, &config, &BuildOptions::PROD, tx_log, &[])
         .await
         .unwrap();
 
@@ -259,7 +409,9 @@ async fn watch_serve_serves_under_build_base() {
     };
 
     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
-    let server = watch_serve(&src, &config, &options, tx_log).await.unwrap();
+    let server = watch_serve(&src, &config, &options, tx_log, &[])
+        .await
+        .unwrap();
     assert!(server.url.ends_with("/app"), "got: {}", server.url);
 
     let url = server.url.clone();

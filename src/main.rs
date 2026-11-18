@@ -42,6 +42,11 @@ struct Args {
     #[arg(short, long)]
     watch: bool,
 
+    /// File name suffixes to watch, comma-separated, e.g. `html` or `one-file.html`
+    /// (default: all files; requires --watch)
+    #[arg(long, value_name = "SUFFIXES", requires = "watch")]
+    filter: Vec<String>,
+
     /// Serve the output directory, built once first (live reload with --watch)
     #[arg(short, long)]
     serve: bool,
@@ -89,13 +94,16 @@ async fn run(args: &Args) -> Result<(), String> {
     let dist = output_dir(args);
     let options = options_build(args);
 
+    // clap only collects; `webadev::watch` trims, lowercases, splits, and validates
+    let filter: Vec<&str> = args.filter.iter().map(String::as_str).collect();
+
     match (args.watch, args.serve) {
         // Build once, then exit
         (false, false) => build_once(&args.src, &dist, &options).await,
         // Rebuild on every change, without serving
         (true, false) => {
             let tx_log = watch_log_channel();
-            let watcher = watch(&args.src, &dist, &options, tx_log).await?;
+            let watcher = watch(&args.src, &dist, &options, tx_log, &filter).await?;
             println!(
                 "Watching {} — rebuilding into {}",
                 args.src.display(),
@@ -117,6 +125,7 @@ async fn run(args: &Args) -> Result<(), String> {
                 &server_config_build(args, dist.clone()),
                 &options,
                 tx_log,
+                &filter,
             )
             .await?;
             println!("bundled {}", dist.display());
@@ -250,6 +259,7 @@ mod tests {
             dev,
             minify: None,
             watch,
+            filter: Vec::new(),
             serve,
             port: 8080,
             ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -313,6 +323,28 @@ mod tests {
                 "value: {value:?}"
             );
         }
+    }
+
+    #[test]
+    fn filter_is_collected_raw() {
+        // clap only collects; `webadev::watch` trims, lowercases, splits, and validates
+        let parsed = Args::try_parse_from(["bundla", "-w", "--filter", "html,css"]).unwrap();
+        assert_eq!(parsed.filter, ["html,css"]);
+
+        let parsed = Args::try_parse_from(["bundla", "-w", "--filter", " .HTML , js "]).unwrap();
+        assert_eq!(parsed.filter, [" .HTML , js "]);
+
+        // an empty value is kept here and dropped by `watch` => watch all
+        let parsed = Args::try_parse_from(["bundla", "-w", "--filter", ""]).unwrap();
+        assert_eq!(parsed.filter, [""]);
+    }
+
+    #[test]
+    fn filter_requires_watch() {
+        let err = Args::try_parse_from(["bundla", "--filter", "html"])
+            .err()
+            .expect("expected --filter without --watch to be rejected");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
     }
 
     #[test]
