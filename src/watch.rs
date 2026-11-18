@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tokio::sync::broadcast::{self, Sender};
+use tokio::sync::broadcast::{self, Sender, error::RecvError};
 use webadev::ReloadType;
 
 use crate::{BuildOptions, build};
@@ -147,6 +147,21 @@ pub(crate) async fn watch_setup(
     })
 }
 
+// Wait for the next source event.
+//
+// A lag means events were dropped: rebuild everything once and ask for a full
+// page reload, since the type of the dropped burst is unknown. `Closed` ends
+// the watch loop; `Lagged` must never do so silently.
+async fn src_event_recv(
+    rx: &mut broadcast::Receiver<(ReloadType, Vec<PathBuf>)>,
+) -> Option<(ReloadType, Vec<PathBuf>)> {
+    match rx.recv().await {
+        Ok(event) => Some(event),
+        Err(RecvError::Lagged(_)) => Some((ReloadType::Page, vec![])),
+        Err(RecvError::Closed) => None,
+    }
+}
+
 impl Watch {
     /// Build on every source change, forever, until the future is dropped.
     ///
@@ -159,7 +174,7 @@ impl Watch {
     /// A failed build is reported as [`WatchLog::Error`]
     /// and the previous output is kept.
     pub async fn run(mut self) -> Result<(), String> {
-        while let Ok((reload_type, paths)) = self.rx_src.recv().await {
+        while let Some((reload_type, paths)) = src_event_recv(&mut self.rx_src).await {
             match build(&self.src, &self.dist, &self.options).await {
                 Ok(warnings) => {
                     warnings.into_iter().for_each(|warning| {
@@ -229,5 +244,27 @@ mod tests {
             browser_reload(ReloadType::Page, &BuildOptions::DEV),
             ReloadType::Page
         );
+    }
+
+    #[tokio::test]
+    async fn src_event_recovers_from_lag() {
+        let (tx, mut rx) = broadcast::channel::<(ReloadType, Vec<PathBuf>)>(1);
+        tx.send((ReloadType::Css, vec![PathBuf::from("a.css")]))
+            .unwrap();
+        tx.send((ReloadType::Css, vec![PathBuf::from("b.css")]))
+            .unwrap();
+        tx.send((ReloadType::Css, vec![PathBuf::from("c.css")]))
+            .unwrap();
+        drop(tx);
+
+        let (reload_type, paths) = src_event_recv(&mut rx).await.expect("a lagged event");
+        assert_eq!(reload_type, ReloadType::Page);
+        assert!(paths.is_empty());
+
+        let (reload_type, paths) = src_event_recv(&mut rx).await.expect("a buffered event");
+        assert_eq!(reload_type, ReloadType::Css);
+        assert_eq!(paths, vec![PathBuf::from("c.css")]);
+
+        assert!(src_event_recv(&mut rx).await.is_none(), "channel closed");
     }
 }

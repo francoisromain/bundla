@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 
 use clap::Parser;
-use tokio::sync::broadcast::{self, Sender};
+use tokio::sync::broadcast::{self, Sender, error::RecvError};
 
 use bundla::{
-    BuildOptions, Minify, Server, ServerConfig, WatchLog, build, serve, watch, watch_serve,
+    BuildOptions, Minify, ReloadType, Server, ServerConfig, WatchLog, build, serve, watch,
+    watch_serve,
 };
 
 #[derive(Parser)]
@@ -162,8 +163,17 @@ async fn build_once(src: &Path, dist: &Path, options: &BuildOptions) -> Result<(
 fn watch_log_channel() -> Sender<WatchLog> {
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
     tokio::spawn(async move {
-        while let Ok(log) = rx_log.recv().await {
-            watch_log_print(&log);
+        loop {
+            match rx_log.recv().await {
+                Ok(log) => watch_log_print(&log),
+                // A blocked stdout can make this task lag. That is not fatal:
+                // warn, emit a conservative page reload, and keep printing.
+                Err(RecvError::Lagged(_)) => {
+                    eprintln!("warning: watch log lagged; some messages dropped");
+                    watch_log_print(&WatchLog::Built(ReloadType::Page, vec![]));
+                }
+                Err(RecvError::Closed) => break,
+            }
         }
     });
     tx_log
