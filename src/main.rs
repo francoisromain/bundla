@@ -38,7 +38,7 @@ struct Args {
     #[arg(long, value_name = "TARGETS")]
     minify: Option<Minify>,
 
-    /// Watch `src` and rebuild on every change
+    /// Watch `src` and build on every change
     #[arg(short, long)]
     watch: bool,
 
@@ -100,7 +100,7 @@ async fn run(args: &Args) -> Result<(), String> {
     match (args.watch, args.serve) {
         // Build once, then exit
         (false, false) => build_once(&args.src, &dist, &options).await,
-        // Rebuild on every change, without serving
+        // Build on every change, without serving
         (true, false) => {
             let tx_log = watch_log_channel();
             let watcher = watch(&args.src, &dist, &options, tx_log, &filter).await?;
@@ -117,7 +117,7 @@ async fn run(args: &Args) -> Result<(), String> {
             let server = serve(&server_config_build(args, dist)).await?;
             start(server, args.open).await
         }
-        // Rebuild on every change, served with live reload
+        // Build on every change, served with live reload
         (true, true) => {
             let tx_log = watch_log_channel();
             let server = watch_serve(
@@ -226,13 +226,19 @@ fn warnings_print(warnings: &[String]) {
 
 fn watch_log_print(log: &WatchLog) {
     match log {
-        WatchLog::Change(reload_type, paths) => {
+        WatchLog::Built(reload_type, paths) => {
             let cwd = std::env::current_dir().unwrap_or_default();
-            let message = format!("rebuilding {}", reload_type.as_str());
-            for path in paths {
-                let rel = path.strip_prefix(&cwd).unwrap_or(path);
-                println!("Change detected: {} — {message}", rel.display());
-            }
+            let files = paths
+                .iter()
+                .map(|path| {
+                    path.strip_prefix(&cwd)
+                        .unwrap_or(path)
+                        .display()
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!("Built {}: {files}", reload_type.as_str());
         }
         WatchLog::Warn(warning) => eprintln!("warning: {warning}"),
         WatchLog::Error(err) => eprintln!("error: {err}"),

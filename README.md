@@ -15,7 +15,7 @@ Bundle HTML, CSS, and JS/TS for prod or dev with live-reload.
 - Prod build `src/` into `dist/` with minification and hashed filenames,
 - Dev build `src/` into `dev/` unminified with sourcemaps,
 - Option to watch and rebuild on change,
-- Option to filter watched files by name or suffix (`--filter html,css`),
+- Option to filter watched files by name or suffix,
 - Option to serve the bundle.
 
 Built with Rust on the [webadev](https://crates.io/crates/webadev) server.
@@ -45,7 +45,7 @@ bundla
 
 - `--dev` / `-d`: dev build, unminified with sourcemaps, output dir `dev/`.
 - `--minify <targets>`: comma-separated output targets to minify: `css`, `js`, `html`, or `all` / `none` (default: `all` for prod builds, `none` with `--dev`). There is a [known bug](#known-bug) for templates.
-- `--watch` / `-w`: rebuild on every change to `src/`.
+- `--watch` / `-w`: build on every change to `src/`.
 - `--filter <suffixes>`: comma-separated file name suffixes to watch (requires `--watch`; default: all files; e.g. `--filter html,css` or `--filter one-file.html`). An item matches when the file name equals `<item>` or ends with `.<item>`. Items are lowercased, a leading dot or path separator is rejected, and empty items are ignored.
 - `--serve` / `-s`: build once, then serve the output directory.
 - `--src <dir>`: source directory (default: `src`).
@@ -96,10 +96,10 @@ Dev build
 # dev build of `src/` into `dev/` with sourcemaps
 bundla -d
 
-# watch: rebuild `dev/` on change, no server
+# watch: build into `dev/` on change, no server
 bundla -dw
 
-# development loop: watch `src/`, rebuild into `dev/`, serve with live reload
+# development loop: watch `src/`, build into `dev/` on change, serve with live reload
 bundla -dws
 bundla -dws --port 9000 --open
 ```
@@ -208,9 +208,9 @@ let watcher = watch(
 .await?;
 
 // runtime logs are reported on your broadcast channel:
-// - `WatchLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
+// - `WatchLog::Built(ReloadType, Vec<PathBuf>)`: successful builds (reload type + changed files)
 // - `WatchLog::Warn(String)`: build warnings
-// - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
+// - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
 
 tokio::spawn(async move {
     while let Ok(log) = rx_log.recv().await {
@@ -241,9 +241,9 @@ let config = ServerConfig {
 };
 
 // runtime logs are reported on your broadcast channel:
-// - `WatchLog::Change(ReloadType, Vec<PathBuf>)`: source changes from the watcher
+// - `WatchLog::Built(ReloadType, Vec<PathBuf>)`: successful builds (reload type + changed files)
 // - `WatchLog::Warn(String)`: build warnings
-// - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
+// - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
 // `BuildOptions::DEV` for the dev loop; `&[]` watches every file

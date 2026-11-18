@@ -43,8 +43,7 @@
       <li>Dev build <code>src/</code> into <code>dev/</code> unminified with sourcemaps,</li>
       <li>Option to watch and rebuild on change,</li>
       <li>
-        Option to filter watched files by name or suffix
-        (<code>--filter html,css</code>),
+        Option to filter watched files by name or suffix,
       </li>
       <li>Option to serve the bundle.</li>
     </ul>
@@ -111,7 +110,7 @@ bundla</code></pre>
         <a href="#known-bug">known bug</a> for templates.
       </li>
       <li>
-        <code>--watch</code> / <code>-w</code>: rebuild on every change to
+        <code>--watch</code> / <code>-w</code>: build on every change to
         <code>src/</code>.
       </li>
       <li>
@@ -171,7 +170,7 @@ bundla</code></pre>
     <h3>Examples</h3>
 
     <p>Prod build</p>
-    <pre><code># prod build, watch `src/` and rebuild on change
+    <pre><code># prod build, watch `src/` and build on change
 bundla -w
 
 # watch only html/css/js changes (static assets are copied on those rebuilds)
@@ -199,10 +198,10 @@ bundla --minify css,js</code></pre>
     <pre><code># dev build of `src/` into `dev/` with sourcemaps
 bundla -d
 
-# watch: rebuild `dev/` on change, no server
+# watch: build `dev/` on change, no server
 bundla -dw
 
-# development loop: watch `src/`, rebuild into `dev/`, serve with live reload
+# development loop: watch `src/`, build into `dev/` on change, serve with live reload
 bundla -dws
 bundla -dws --port 9000 --open</code></pre>
 
@@ -304,9 +303,9 @@ let watcher = watch(
 .await?;
 
 // runtime logs are reported on your broadcast channel:
-// - `WatchLog::Change(ReloadType, Vec&lt;PathBuf&gt;)`: source changes from the watcher
+// - `WatchLog::Built(ReloadType, Vec&lt;PathBuf&gt;)`: successful builds (reload type + changed files)
 // - `WatchLog::Warn(String)`: build warnings
-// - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
+// - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
 
 tokio::spawn(async move {
     while let Ok(log) = rx_log.recv().await {
@@ -317,7 +316,7 @@ tokio::spawn(async move {
 watcher.run().await?; // rebuilds until the future is dropped</code></pre>
     <p>
       <code>Watch</code> is the handle returned by <code>watch</code>.
-      <code>watch_serve</code> below runs the same rebuild loop behind the
+      <code>watch_serve</code> below runs the same build loop behind the
       server, with the same name/suffix filter
       (<code>&amp;[]</code> watches every file).
     </p>
@@ -338,9 +337,9 @@ let config = ServerConfig {
 };
 
 // runtime logs are reported on your broadcast channel:
-// - `WatchLog::Change(ReloadType, Vec&lt;PathBuf&gt;)`: source changes from the watcher
+// - `WatchLog::Built(ReloadType, Vec&lt;PathBuf&gt;)`: successful builds (reload type + changed files)
 // - `WatchLog::Warn(String)`: build warnings
-// - `WatchLog::Error(String)`: rebuild failures during watch (previous build is kept)
+// - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
 // `BuildOptions::DEV` for the dev loop; `&amp;[]` watches every file

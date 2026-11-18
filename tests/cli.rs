@@ -368,7 +368,7 @@ fn dev_watch_rebuilds_without_injection() {
     fs::write(src.join("index.html"), "<html><body>v2</body></html>").unwrap();
     assert!(
         wait_contains(&out_html, "v2", Duration::from_secs(60)),
-        "rebuild after change missing"
+        "build after change missing"
     );
 
     // nothing injected into the written files: no reload script
@@ -418,13 +418,13 @@ fn watch_filter_ignores_other_extensions() {
     assert_eq!(
         fs::read_to_string(&out_txt).unwrap(),
         "v1",
-        "a filtered-out change must not rebuild"
+        "a filtered-out change must not build"
     );
 
     fs::write(src.join("index.html"), "<html><body>v2</body></html>").unwrap();
     assert!(
         wait_contains(&out_html, "v2", Duration::from_secs(60)),
-        "rebuild after change missing"
+        "build after change missing"
     );
 
     child.kill().unwrap();
@@ -465,7 +465,7 @@ fn watch_hashes_on_rebuild() {
     assert_ne!(
         hashed_css_name(&styles_dir),
         first_css,
-        "rebuild after css change missing"
+        "build after css change missing"
     );
 
     // nothing injected into the written files: no reload script
@@ -615,7 +615,7 @@ async fn watch_serve_reloads_on_change() {
 
     fs::write(src.join("index.html"), "<html><body>v2</body></html>").unwrap();
 
-    // …the change triggers a rebuild, and the server serves the fresh page
+    // …the change triggers a build, and the server serves the fresh page
     let reloaded = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let body = reqwest::get(&url).await.unwrap().text().await.unwrap();

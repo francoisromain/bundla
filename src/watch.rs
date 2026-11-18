@@ -7,19 +7,25 @@ use crate::{BuildOptions, build};
 
 /// A runtime log line from the watch loop, sent on the caller's broadcast
 /// channel so the library never prints directly.
+///
+/// The variants report the outcome of each build attempt,
+/// not the watcher event that triggered it.
 #[derive(Clone, Debug)]
 pub enum WatchLog {
-    /// A source change detected by the watcher, before the rebuild.
-    Change(ReloadType, Vec<PathBuf>),
+    /// A build succeeded and `dist` is in place.
+    ///
+    /// Sent once for the startup build with an empty path list,
+    /// then once per successful rebuild with the changed files.
+    Built(ReloadType, Vec<PathBuf>),
     /// A non-fatal build warning (unreadable asset skipped, etc.).
     Warn(String),
-    /// A rebuild failure during watch; the browser keeps the previous build.
+    /// A build failure during watch; the previous build is kept.
     Error(String),
 }
 
 /// Headless watch handle returned by [`watch`].
 ///
-/// No server is involved: no port, no HTTP, no browser. The rebuild
+/// No server is involved: no port, no HTTP, no browser. The build
 /// loop runs while the [`Watch::run`] future is alive; dropping it stops
 /// watching. Nothing is ever injected into the written files.
 #[derive(Debug)]
@@ -29,29 +35,30 @@ pub struct Watch {
     dist: PathBuf,
     options: BuildOptions,
     tx_log: Sender<WatchLog>,
-    // Dist-change events for the server: a successful rebuild
+    // Dist-change events for the server: a successful build
     // triggers a browser reload. `None` when headless.
     tx_dist: Option<Sender<(ReloadType, Vec<PathBuf>)>>,
 }
 
-/// Watch `src` and rebuild it into `dist` on startup and on every
+/// Watch `src` and build it into `dist` on startup and on every
 /// change, without serving. Headless: no server, no port, no browser.
 ///
-/// `filter` narrows the rebuild to files whose name matches an item, e.g.
+/// `filter` narrows the build to files whose name matches an item, e.g.
 /// `&["html", "css", "one-file.html"]`. An item matches when the file name
 /// equals `<item>` or ends with `.<item>`. Items are trimmed and lowercased,
 /// a leading dot or path separator is rejected, and empty items are ignored.
 /// An empty `filter` (including `&[""]`) watches every file under `src`.
 ///
 /// The first build runs before `watch` returns, so a failure aborts
-/// with `Err`. Afterwards every detected change triggers a rebuild; a
-/// failed rebuild is reported on `tx_log` as [`WatchLog::Error`] and the
-/// previous output is kept.
+/// with `Err`. Every detected change triggers a build.
+/// A failed build is reported on `tx_log` as [`WatchLog::Error`]
+/// and the previous output is kept.
 ///
 /// Runtime logs are reported on `tx_log`:
-/// - [`WatchLog::Change`]: source changes from the watcher
+/// - [`WatchLog::Built`]: a successful build, after `dist` is replaced;
+///   the startup build reports `Page` with an empty path list
 /// - [`WatchLog::Warn`]: build warnings
-/// - [`WatchLog::Error`]: rebuild failures (previous build kept)
+/// - [`WatchLog::Error`]: build failures (previous build kept)
 ///
 /// # Examples
 ///
@@ -71,7 +78,7 @@ pub struct Watch {
 ///
 ///     let (tx_log, _rx_log) = broadcast::channel::<WatchLog>(100);
 ///     let dist = dir.path().join("dev");
-///     // rebuild on `.html` changes only; `&[]` watches every file
+///     // build on `.html` changes only; `&[]` watches every file
 ///     let watcher = watch(&src, &dist, &BuildOptions::DEV, tx_log, &["html"])
 ///         .await
 ///         .unwrap();
@@ -98,7 +105,7 @@ pub async fn watch(
 // Shared by `watch` and the server `watch_serve`:
 // - start the filesystem watcher on `src`
 // - build once on startup
-// - keep the change receiver for the rebuild loop (`Watch::run`)
+// - keep the change receiver for the build loop (`Watch::run`)
 //
 // `filter`: watched file name suffixes; empty watches every file.
 //
@@ -128,6 +135,8 @@ pub(crate) async fn watch_setup(
             let _ = tx_log.send(WatchLog::Warn(warning));
         });
 
+    let _ = tx_log.send(WatchLog::Built(ReloadType::Page, vec![]));
+
     Ok(Watch {
         rx_src,
         src: src.to_path_buf(),
@@ -139,29 +148,33 @@ pub(crate) async fn watch_setup(
 }
 
 impl Watch {
-    /// rebuild on every source change, forever, until the future is
-    /// dropped.
+    /// Build on every source change, forever, until the future is dropped.
     ///
-    /// Each detected change is reported on the log channel as
-    /// [`WatchLog::Change`], then the whole `src` directory is rebuilt.
-    /// Warnings are reported as [`WatchLog::Warn`]; a failed rebuild is
-    /// reported as [`WatchLog::Error`] and the previous output is kept.
+    /// Each detected change rebuilds the whole `src` directory.
+    ///
+    /// A successful build is reported on the log channel as [`WatchLog::Built`]
+    /// *after* `dist` has been replaced.
+    ///
+    /// Warnings are reported as [`WatchLog::Warn`].
+    /// A failed build is reported as [`WatchLog::Error`]
+    /// and the previous output is kept.
     pub async fn run(mut self) -> Result<(), String> {
         while let Ok((reload_type, paths)) = self.rx_src.recv().await {
-            let _ = self
-                .tx_log
-                .send(WatchLog::Change(reload_type, paths.clone()));
-
             match build(&self.src, &self.dist, &self.options).await {
                 Ok(warnings) => {
                     warnings.into_iter().for_each(|warning| {
                         let _ = self.tx_log.send(WatchLog::Warn(warning));
                     });
 
-                    // Successful rebuild: reload the browser when serving
+                    // `dist` is in place: report the type browsers (and
+                    // headless consumers) should use, once per build.
+                    let reload_type = browser_reload(reload_type, &self.options);
+
                     if let Some(tx_dist) = &self.tx_dist {
-                        let _ = tx_dist.send((browser_reload(reload_type, &self.options), paths));
+                        let _ = tx_dist.send((reload_type, paths.clone()));
                     }
+
+                    let _ = self.tx_log.send(WatchLog::Built(reload_type, paths));
                 }
                 Err(err) => {
                     // Keep the previous build
@@ -176,11 +189,11 @@ impl Watch {
     }
 }
 
-// How a successful rebuild tells connected browsers to reload.
+// How a successful build tells connected browsers to reload.
 //
 // Css hot-reload re-fetches the stylesheet href held by the page.
 // It only works with stable filenames.
-// With hashed filenames the rebuild change the name so the stale href would 404.
+// With hashed filenames the build change the name so the stale href would 404.
 // Ask for a full page reload instead, which picks up the fresh hashed references.
 fn browser_reload(reload_type: ReloadType, options: &BuildOptions) -> ReloadType {
     if options.hash {

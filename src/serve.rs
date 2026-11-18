@@ -54,7 +54,7 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
 /// - serve it with live reload.
 ///
 /// `options` selects the build profile.
-/// `filter` narrows the rebuild to files whose name matches an item; see
+/// `filter` narrows the build to files whose name matches an item; see
 /// [`watch`](crate::watch) for the matching rules. An empty `filter`
 /// watches every file.
 /// `config.base` is ignored and overwritten by `options.base`
@@ -63,11 +63,11 @@ pub async fn serve(config: &Config) -> Result<Server, String> {
 /// Runtime logs are reported on `tx_log`.
 ///
 /// This is the [`watch`](crate::watch) with a server on top.
-/// On every successful rebuild the connected browsers reload:
+/// On every successful build the connected browsers reload:
 /// - hot-reload for css when filenames are stable,
 /// - full page reload otherwise.
 ///
-/// A failed rebuild keeps the previous build.
+/// A failed build keeps the previous build.
 /// The reload script is served, never written to the output files.
 ///
 /// # Examples
@@ -146,7 +146,7 @@ pub async fn watch_serve(
         .await
         .map_err(|err| format!("bind error: {err}"))?;
 
-    // Rebuild on every change, then reload the browser
+    // Build on every change, then reload the browser
     tokio::spawn(watcher.run());
 
     Ok(server)
