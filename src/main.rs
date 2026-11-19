@@ -6,8 +6,8 @@ use clap::Parser;
 use tokio::sync::broadcast::{self, Sender, error::RecvError};
 
 use bundla::{
-    BuildOptions, Minify, ReloadType, Server, ServerConfig, WatchLog, build, serve, watch,
-    watch_serve,
+    BuildCause, BuildOptions, Minify, ReloadType, Server, ServerConfig, WatchLog, build, serve,
+    watch, watch_serve,
 };
 
 #[derive(Parser)]
@@ -106,7 +106,7 @@ async fn run(args: &Args) -> Result<(), String> {
             let tx_log = watch_log_channel();
             let watcher = watch(&args.src, &dist, &options, tx_log, &filter).await?;
             println!(
-                "Watching {} — rebuilding into {}",
+                "watching {}, rebuilding into {}",
                 args.src.display(),
                 dist.display()
             );
@@ -173,7 +173,8 @@ fn watch_log_channel() -> Sender<WatchLog> {
                 // warn, emit a conservative page reload, and keep printing.
                 Err(RecvError::Lagged(_)) => {
                     eprintln!("warning: watch log lagged; some messages dropped");
-                    watch_log_print(&WatchLog::Built(ReloadType::Page, vec![]));
+                    // A dropped line may have been a reload instruction.
+                    println!("built {}", ReloadType::Page.as_str());
                 }
                 Err(RecvError::Closed) => break,
             }
@@ -223,10 +224,10 @@ fn base_parse(value: &str) -> Result<String, String> {
 }
 
 async fn start(server: Server, open: bool) -> Result<(), String> {
-    println!("Serving {}", server.url);
+    println!("serving {}", server.url);
 
     if open && let Err(err) = open::that(&server.url) {
-        eprintln!("Failed to open browser: {err}");
+        eprintln!("failed to open browser: {err}");
     }
 
     server.run().await
@@ -240,7 +241,11 @@ fn warnings_print(warnings: &[String]) {
 
 fn watch_log_print(log: &WatchLog) {
     match log {
-        WatchLog::Built(reload_type, paths) => {
+        WatchLog::Built {
+            cause,
+            reload_type,
+            paths,
+        } => {
             let cwd = std::env::current_dir().unwrap_or_default();
             let files = paths
                 .iter()
@@ -252,7 +257,15 @@ fn watch_log_print(log: &WatchLog) {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            println!("built {}: {files}", reload_type.as_str());
+
+            match cause {
+                BuildCause::Startup => println!("built {}: startup", reload_type.as_str()),
+                BuildCause::Lagged => println!("built {}", reload_type.as_str()),
+                BuildCause::Change if files.is_empty() => {
+                    println!("built {}", reload_type.as_str())
+                }
+                BuildCause::Change => println!("built {}: {files}", reload_type.as_str()),
+            }
         }
         WatchLog::Warn(warning) => eprintln!("warning: {warning}"),
         WatchLog::Error(err) => eprintln!("error: {err}"),

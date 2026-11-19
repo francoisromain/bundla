@@ -6,7 +6,7 @@ use tokio::{
     time::{sleep, timeout},
 };
 
-use bundla::{BuildOptions, ReloadType, WatchLog, watch};
+use bundla::{BuildCause, BuildOptions, ReloadType, WatchLog, watch};
 
 #[cfg(feature = "serve")]
 use std::net::IpAddr;
@@ -48,14 +48,20 @@ async fn wait_contains(path: &Path, needle: &str) {
 }
 
 // The build that runs before `watch` returns reports a full page reload with
-// no changed paths. It is already queued when `watch` resolves.
+// no changed paths and `BuildCause::Startup`. It is already queued when
+// `watch` resolves.
 async fn assert_startup_built(rx_log: &mut broadcast::Receiver<WatchLog>) {
     let log = timeout(Duration::from_secs(10), rx_log.recv())
         .await
         .expect("timed out waiting for the startup build log")
         .expect("log channel closed");
     match log {
-        WatchLog::Built(reload_type, paths) => {
+        WatchLog::Built {
+            cause,
+            reload_type,
+            paths,
+        } => {
+            assert_eq!(cause, BuildCause::Startup);
             assert_eq!(reload_type, ReloadType::Page);
             assert!(paths.is_empty(), "got: {paths:?}");
         }
@@ -92,7 +98,12 @@ async fn watch_builds_on_startup_and_rebuilds_on_change() {
         .expect("timed out waiting for a build log")
         .expect("log channel closed");
     match log {
-        WatchLog::Built(reload_type, paths) => {
+        WatchLog::Built {
+            cause,
+            reload_type,
+            paths,
+        } => {
+            assert_eq!(cause, BuildCause::Change);
             assert_eq!(reload_type, ReloadType::Page);
             assert!(
                 paths.iter().any(|path| path.ends_with("index.html")),
@@ -134,7 +145,7 @@ async fn watch_keeps_previous_output_on_failed_rebuild() {
         loop {
             match rx_log.recv().await {
                 Ok(WatchLog::Error(_)) => return,
-                Ok(WatchLog::Built(..)) => {
+                Ok(WatchLog::Built { .. }) => {
                     panic!("a failed build must not report WatchLog::Built")
                 }
                 Ok(_) => {}
@@ -183,7 +194,12 @@ async fn watch_log_reports_page_for_hashed_css() {
         .expect("timed out waiting for a build log")
         .expect("log channel closed");
     match log {
-        WatchLog::Built(reload_type, paths) => {
+        WatchLog::Built {
+            cause,
+            reload_type,
+            paths,
+        } => {
+            assert_eq!(cause, BuildCause::Change);
             assert_eq!(reload_type, ReloadType::Page);
             assert!(
                 paths.iter().any(|path| path.ends_with("main.css")),

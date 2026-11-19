@@ -184,11 +184,11 @@ fn wait_contains(path: &Path, needle: &str, timeout: Duration) -> bool {
     false
 }
 
-// Read child stdout lines until the `Serving <url>` line
+// Read child stdout lines until the `serving <url>` line
 fn serving_url(stdout: ChildStdout) -> String {
     for line in BufReader::new(stdout).lines() {
         let line = line.unwrap();
-        if let Some(url) = line.strip_prefix("Serving ") {
+        if let Some(url) = line.strip_prefix("serving ") {
             return url.to_string();
         }
     }

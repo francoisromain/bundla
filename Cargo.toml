@@ -1,6 +1,6 @@
 [package]
 name = "bundla"
-version = "0.7.2"
+version = "0.8.0"
 edition = "2024"
 description = "Bundle HTML, CSS, and JS/TS: prod build with minification and hashed filenames by default, dev build with sourcemaps, composable watch and serve"
 license = "MIT"

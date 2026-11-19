@@ -192,7 +192,7 @@ let targets: Minify = "css,js".parse().unwrap();
 ```rust
 use std::path::Path;
 use tokio::sync::broadcast;
-use bundla::{BuildOptions, WatchLog, Watch, watch};
+use bundla::{BuildCause, BuildOptions, WatchLog, Watch, watch};
 
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
@@ -209,7 +209,10 @@ let watcher = watch(
 
 // runtime logs are reported on your broadcast channel:
 // (sent on `tx_log`, consumed with `rx_log.recv()`)
-// - `WatchLog::Built(ReloadType, Vec<PathBuf>)`: successful builds (reload type + changed files)
+// - `WatchLog::Built { cause, reload_type, paths }`: successful builds
+//   `cause`: `BuildCause::Startup`, `Change` or `Lagged`
+//   `reload_type`: `ReloadType::Page` or `ReloadType::Css`
+//   `paths`: `Vec<PathBuf>`
 // - `WatchLog::Warn(String)`: build warnings
 // - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
 
@@ -230,7 +233,7 @@ watcher.run().await?; // rebuilds until the future is dropped
 use std::net::IpAddr;
 use std::path::Path;
 use tokio::sync::broadcast;
-use bundla::{BuildOptions, WatchLog, ServerConfig, watch_serve};
+use bundla::{BuildCause, BuildOptions, WatchLog, ServerConfig, watch_serve};
 
 let config = ServerConfig {
     dir: "dev".into(),
@@ -247,11 +250,7 @@ let (tx_log, mut rx_log) = broadcast::channel(100);
 let server = watch_serve(Path::new("src"), &config, &BuildOptions::DEV, tx_log, &[]).await?;
 println!("Starting development server at {}", server.url);
 
-// runtime logs are reported on your broadcast channel:
-// (sent on `tx_log`, consumed with `rx_log.recv()`)
-// - `WatchLog::Built(ReloadType, Vec<PathBuf>)`: successful builds (reload type + changed files)
-// - `WatchLog::Warn(String)`: build warnings
-// - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
+// runtime logs are reported on your broadcast channel (see example above)
 
 tokio::spawn(async move {
     while let Ok(log) = rx_log.recv().await {
@@ -277,7 +276,7 @@ The default features:
 To `build` or `watch` without the server (and drop the axum dependency):
 
 ```toml
-bundla = { version = "0.7", default-features = false }
+bundla = { version = "0.8", default-features = false }
 ```
 
 ## Local installation

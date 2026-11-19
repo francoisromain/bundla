@@ -5,18 +5,34 @@ use webadev::ReloadType;
 
 use crate::{BuildOptions, build};
 
+/// What triggered a build during watch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuildCause {
+    /// The first build, which runs before `watch` returns.
+    Startup,
+    /// A detected source change triggered the build.
+    Change,
+    /// Source events were dropped, so the whole tree is rebuilt conservatively.
+    Lagged,
+}
+
 /// A runtime log line from the watch loop, sent on the caller's broadcast
 /// channel so the library never prints directly.
 ///
-/// The variants report the outcome of each build attempt,
-/// not the watcher event that triggered it.
+/// The variants report the outcome of each build attempt;
+/// [`WatchLog::Built`] also carries the cause that triggered it.
 #[derive(Clone, Debug)]
 pub enum WatchLog {
     /// A build succeeded and `dist` is in place.
-    ///
-    /// Sent once for the startup build with an empty path list,
-    /// then once per successful rebuild with the changed files.
-    Built(ReloadType, Vec<PathBuf>),
+    Built {
+        /// What triggered the build.
+        cause: BuildCause,
+        /// Full page or CSS only.
+        reload_type: ReloadType,
+        /// Changed files for [`BuildCause::Change`].
+        /// Empty for [`BuildCause::Startup`] and [`BuildCause::Lagged`].
+        paths: Vec<PathBuf>,
+    },
     /// A non-fatal build warning (unreadable asset skipped, etc.).
     Warn(String),
     /// A build failure during watch; the previous build is kept.
@@ -54,7 +70,9 @@ pub struct Watch {
 ///
 /// Runtime logs are reported on `tx_log`:
 /// - [`WatchLog::Built`]: a successful build, after `dist` is replaced.
-///   The startup build reports `Page` with an empty path list
+///   - [`BuildCause::Startup`] for the first build,
+///   - [`BuildCause::Change`] for a rebuild with changed files,
+///   - [`BuildCause::Lagged`] for a conservative full rebuild
 /// - [`WatchLog::Warn`]: build warnings
 /// - [`WatchLog::Error`]: build failures (previous build kept)
 ///
@@ -133,7 +151,11 @@ pub(crate) async fn watch_setup(
             let _ = tx_log.send(WatchLog::Warn(warning));
         });
 
-    let _ = tx_log.send(WatchLog::Built(ReloadType::Page, vec![]));
+    let _ = tx_log.send(WatchLog::Built {
+        cause: BuildCause::Startup,
+        reload_type: ReloadType::Page,
+        paths: vec![],
+    });
 
     Ok(Watch {
         rx_src,
@@ -154,10 +176,10 @@ pub(crate) async fn watch_setup(
 
 async fn src_event_recv(
     rx: &mut broadcast::Receiver<(ReloadType, Vec<PathBuf>)>,
-) -> Option<(ReloadType, Vec<PathBuf>)> {
+) -> Option<(BuildCause, ReloadType, Vec<PathBuf>)> {
     match rx.recv().await {
-        Ok(event) => Some(event),
-        Err(RecvError::Lagged(_)) => Some((ReloadType::Page, vec![])),
+        Ok((reload_type, paths)) => Some((BuildCause::Change, reload_type, paths)),
+        Err(RecvError::Lagged(_)) => Some((BuildCause::Lagged, ReloadType::Page, vec![])),
         Err(RecvError::Closed) => None,
     }
 }
@@ -168,13 +190,13 @@ impl Watch {
     /// Each detected change rebuilds the whole `src` directory.
     ///
     /// A successful build is reported on the log channel as [`WatchLog::Built`]
-    /// *after* `dist` has been replaced.
+    /// with its [`BuildCause`], *after* `dist` has been replaced.
     ///
     /// Warnings are reported as [`WatchLog::Warn`].
     /// A failed build is reported as [`WatchLog::Error`]
     /// and the previous output is kept.
     pub async fn run(mut self) -> Result<(), String> {
-        while let Some((reload_type, paths)) = src_event_recv(&mut self.rx_src).await {
+        while let Some((cause, reload_type, paths)) = src_event_recv(&mut self.rx_src).await {
             match build(&self.src, &self.dist, &self.options).await {
                 Ok(warnings) => {
                     warnings.into_iter().for_each(|warning| {
@@ -189,7 +211,11 @@ impl Watch {
                         let _ = tx_dist.send((reload_type, paths.clone()));
                     }
 
-                    let _ = self.tx_log.send(WatchLog::Built(reload_type, paths));
+                    let _ = self.tx_log.send(WatchLog::Built {
+                        cause,
+                        reload_type,
+                        paths,
+                    });
                 }
                 Err(err) => {
                     // Keep the previous build
@@ -257,11 +283,13 @@ mod tests {
             .unwrap();
         drop(tx);
 
-        let (reload_type, paths) = src_event_recv(&mut rx).await.expect("a lagged event");
+        let (cause, reload_type, paths) = src_event_recv(&mut rx).await.expect("a lagged event");
+        assert_eq!(cause, BuildCause::Lagged);
         assert_eq!(reload_type, ReloadType::Page);
         assert!(paths.is_empty());
 
-        let (reload_type, paths) = src_event_recv(&mut rx).await.expect("a buffered event");
+        let (cause, reload_type, paths) = src_event_recv(&mut rx).await.expect("a buffered event");
+        assert_eq!(cause, BuildCause::Change);
         assert_eq!(reload_type, ReloadType::Css);
         assert_eq!(paths, vec![PathBuf::from("c.css")]);
 

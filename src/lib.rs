@@ -30,7 +30,7 @@ pub use build::{BuildOptions, Minify, build};
 
 mod watch;
 
-pub use watch::{Watch, WatchLog, watch};
+pub use watch::{BuildCause, Watch, WatchLog, watch};
 
 #[cfg(feature = "serve")]
 mod serve;
