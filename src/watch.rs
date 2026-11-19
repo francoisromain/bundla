@@ -49,14 +49,12 @@ pub struct Watch {
 /// a leading dot or path separator is rejected, and empty items are ignored.
 /// An empty `filter` (including `&[""]`) watches every file under `src`.
 ///
-/// The first build runs before `watch` returns, so a failure aborts
-/// with `Err`. Every detected change triggers a build.
-/// A failed build is reported on `tx_log` as [`WatchLog::Error`]
-/// and the previous output is kept.
+/// The first build runs before `watch` returns, so a failure aborts with `Err`.
+/// Every detected change triggers a build.
 ///
 /// Runtime logs are reported on `tx_log`:
-/// - [`WatchLog::Built`]: a successful build, after `dist` is replaced;
-///   the startup build reports `Page` with an empty path list
+/// - [`WatchLog::Built`]: a successful build, after `dist` is replaced.
+///   The startup build reports `Page` with an empty path list
 /// - [`WatchLog::Warn`]: build warnings
 /// - [`WatchLog::Error`]: build failures (previous build kept)
 ///
@@ -149,9 +147,11 @@ pub(crate) async fn watch_setup(
 
 // Wait for the next source event.
 //
+// `Closed` ends the watch loop.
+// `Lagged` must never close so silently.
 // A lag means events were dropped: rebuild everything once and ask for a full
-// page reload, since the type of the dropped burst is unknown. `Closed` ends
-// the watch loop; `Lagged` must never do so silently.
+// page reload, since the type of the dropped burst is unknown.
+
 async fn src_event_recv(
     rx: &mut broadcast::Receiver<(ReloadType, Vec<PathBuf>)>,
 ) -> Option<(ReloadType, Vec<PathBuf>)> {

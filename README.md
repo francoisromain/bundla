@@ -208,6 +208,7 @@ let watcher = watch(
 .await?;
 
 // runtime logs are reported on your broadcast channel:
+// (sent on `tx_log`, consumed with `rx_log.recv()`)
 // - `WatchLog::Built(ReloadType, Vec<PathBuf>)`: successful builds (reload type + changed files)
 // - `WatchLog::Warn(String)`: build warnings
 // - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
@@ -240,15 +241,17 @@ let config = ServerConfig {
     base: String::new(),
 };
 
-// runtime logs are reported on your broadcast channel:
-// - `WatchLog::Built(ReloadType, Vec<PathBuf>)`: successful builds (reload type + changed files)
-// - `WatchLog::Warn(String)`: build warnings
-// - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
 let (tx_log, mut rx_log) = broadcast::channel(100);
 
 // `BuildOptions::DEV` for the dev loop; `&[]` watches every file
 let server = watch_serve(Path::new("src"), &config, &BuildOptions::DEV, tx_log, &[]).await?;
 println!("Starting development server at {}", server.url);
+
+// runtime logs are reported on your broadcast channel:
+// (sent on `tx_log`, consumed with `rx_log.recv()`)
+// - `WatchLog::Built(ReloadType, Vec<PathBuf>)`: successful builds (reload type + changed files)
+// - `WatchLog::Warn(String)`: build warnings
+// - `WatchLog::Error(String)`: build failures during watch (previous build is kept)
 
 tokio::spawn(async move {
     while let Ok(log) = rx_log.recv().await {

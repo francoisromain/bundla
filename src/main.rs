@@ -110,12 +110,14 @@ async fn run(args: &Args) -> Result<(), String> {
                 args.src.display(),
                 dist.display()
             );
+
             watcher.run().await
         }
         // Build once, then serve the output
         (false, true) => {
             build_once(&args.src, &dist, &options).await?;
             let server = serve(&server_config_build(args, dist)).await?;
+
             start(server, args.open).await
         }
         // Build on every change, served with live reload
@@ -129,7 +131,7 @@ async fn run(args: &Args) -> Result<(), String> {
                 &filter,
             )
             .await?;
-            println!("bundled {}", dist.display());
+
             start(server, args.open).await
         }
     }
@@ -162,6 +164,7 @@ async fn build_once(src: &Path, dist: &Path, options: &BuildOptions) -> Result<(
 // Log channel with a printer task attached
 fn watch_log_channel() -> Sender<WatchLog> {
     let (tx_log, mut rx_log) = broadcast::channel::<WatchLog>(100);
+
     tokio::spawn(async move {
         loop {
             match rx_log.recv().await {
@@ -176,6 +179,7 @@ fn watch_log_channel() -> Sender<WatchLog> {
             }
         }
     });
+
     tx_log
 }
 
@@ -248,7 +252,7 @@ fn watch_log_print(log: &WatchLog) {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            println!("Built {}: {files}", reload_type.as_str());
+            println!("built {}: {files}", reload_type.as_str());
         }
         WatchLog::Warn(warning) => eprintln!("warning: {warning}"),
         WatchLog::Error(err) => eprintln!("error: {err}"),
