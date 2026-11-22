@@ -1,5 +1,5 @@
-// The CLI always builds with serving (`-s`), so its tests need the feature
-#![cfg(feature = "serve")]
+// The CLI binary is only built with the `cli` feature.
+#![cfg(feature = "cli")]
 
 use std::{
     fs,

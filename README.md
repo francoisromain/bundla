@@ -267,17 +267,30 @@ When building and serving manually, use `BuildOptions.server_base()` to populate
 
 In `watch_serve`, `ServerConfig.base` is ignored and overwritten by `BuildOptions.base` using `BuildOptions.server_base()`.
 
-### Feature flag
+### Feature flags
 
-The default features:
-- are required for: `serve`, `watch_serve`, `Server` and `ServerConfig`,
-- are not required for: `build`, `watch`, `Watch`, `WatchLog`, `Minify` and `BuildOptions`.
+The `cli` feature is enabled by default: it pulls in every capability and builds the `bundla` binary. With `default-features = false`, pick only what you need:
 
-To `build` or `watch` without the server (and drop the axum dependency):
+| Feature | Public API | Dependencies |
+| --- | --- | --- |
+| `build` | `build`, `BuildOptions`, `Minify` | `lol_html`, `minify-html`, `walkdir` |
+| `css` | CSS bundling inside `build` | `lightningcss`, `parcel_sourcemap` (and `build`) |
+| `js` | JS/TS bundling inside `build` | `rolldown` (and `build`) |
+| `watch` | `watch`, `Watch`, `WatchLog`, `BuildCause` | `webadev/watch`, `tokio` (and `build`) |
+| `serve` | `serve`, `ServerConfig`, `Server` | `webadev/serve`, `tokio/rt` |
+| `cli` | the `bundla` binary | `clap`, `open`, `tokio` and every feature above |
+
+`ReloadType` is available with either `watch` or `serve`. `watch_serve` needs both. Referencing a CSS or JS asset without the matching feature is a hard error that names the feature to enable, so a build never silently drops an asset.
+
+`Minify::CSS` and `Minify::JS` also minify inline `<style>`/`<script>` blocks with only `build` enabled. The `css`/`js` features are required for external assets only.
+
+For example, to build HTML and CSS and watch the sources — without the JS bundler, the server or the CLI:
 
 ```toml
-bundla = { version = "0.8", default-features = false }
+bundla = { version = "0.9", default-features = false, features = ["build", "css", "watch"] }
 ```
+
+In `0.8`, `default-features = false` still included `build` and `watch`; it now includes nothing. Enable the features you use explicitly.
 
 ## Local installation
 

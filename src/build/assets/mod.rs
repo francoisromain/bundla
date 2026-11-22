@@ -1,6 +1,3 @@
-mod css;
-mod js;
-
 use std::{
     collections::HashMap,
     fs,
@@ -9,13 +6,23 @@ use std::{
 
 use super::BuildOptions;
 
+#[cfg(feature = "css")]
+mod css;
+#[cfg(feature = "css")]
 use css::css_bundle;
+
+#[cfg(feature = "js")]
+mod js;
+#[cfg(feature = "js")]
 use js::js_bundle;
 
 pub const CSS_EXTENSIONS: [&str; 1] = ["css"];
 
 pub const JS_EXTENSIONS: [&str; 6] = ["js", "mjs", "cjs", "ts", "mts", "cts"];
 
+// `cache` is used only by the css bundler; without either bundler the build
+// options and the shared helpers below are unused too. Valid small builds.
+#[cfg_attr(not(feature = "css"), allow(unused_variables))]
 pub async fn asset_process(
     asset_path: &Path,
     src: &Path,
@@ -35,10 +42,12 @@ pub async fn asset_process(
     let dir = asset_path_relative
         .parent()
         .unwrap_or_else(|| Path::new(""));
-    let file_name = match ext.as_str() {
+    match ext.as_str() {
+        #[cfg(feature = "css")]
         e if CSS_EXTENSIONS.contains(&e) => {
-            css_bundle(asset_path, src, dist, dir, options, cache, warnings)?
+            css_bundle(asset_path, src, dist, dir, options, cache, warnings)
         }
+        #[cfg(feature = "js")]
         e if JS_EXTENSIONS.contains(&e) => {
             js_bundle(
                 asset_path,
@@ -49,21 +58,28 @@ pub async fn asset_process(
                 options,
                 warnings,
             )
-            .await?
+            .await
         }
-        other => {
-            return Err(format!(
-                "unsupported asset type: .{} ({})",
-                other,
-                asset_path.display()
-            ));
-        }
-    };
-
-    Ok(file_name)
+        #[cfg(not(feature = "css"))]
+        e if CSS_EXTENSIONS.contains(&e) => Err(format!(
+            "css bundling requires the `css` feature: {}",
+            asset_path.display()
+        )),
+        #[cfg(not(feature = "js"))]
+        e if JS_EXTENSIONS.contains(&e) => Err(format!(
+            "js bundling requires the `js` feature: {}",
+            asset_path.display()
+        )),
+        other => Err(format!(
+            "unsupported asset type: .{} ({})",
+            other,
+            asset_path.display()
+        )),
+    }
 }
 
-// The source file stem, falling back to a fixed name for unusual names.
+// Shared helpers used only by the css/js bundlers.
+#[cfg_attr(not(any(feature = "css", feature = "js")), allow(dead_code))]
 fn file_stem_extract(source: &Path, fallback: &str) -> String {
     source
         .file_stem()
@@ -73,6 +89,7 @@ fn file_stem_extract(source: &Path, fallback: &str) -> String {
 }
 
 // Output directory for a relative `dir` under `dist`, created on the fly.
+#[cfg_attr(not(any(feature = "css", feature = "js")), allow(dead_code))]
 fn dist_mkdir(dist: &Path, dir: &Path) -> Result<PathBuf, String> {
     let out = if dir.as_os_str().is_empty() {
         dist.to_path_buf()
@@ -85,6 +102,7 @@ fn dist_mkdir(dist: &Path, dir: &Path) -> Result<PathBuf, String> {
 }
 
 // `name` with an optional content hash, preserving the source directory
+#[cfg_attr(not(any(feature = "css", feature = "js")), allow(dead_code))]
 fn file_name_output_format(stem: &str, ext: &str, bytes: &[u8], hash: bool) -> String {
     if hash {
         format!("{stem}-{}.{ext}", hash_create(bytes))
@@ -94,6 +112,7 @@ fn file_name_output_format(stem: &str, ext: &str, bytes: &[u8], hash: bool) -> S
 }
 
 // Std-only FNV-1a 64-bit hash, formatted as 16 hex chars.
+#[cfg_attr(not(any(feature = "css", feature = "js")), allow(dead_code))]
 fn hash_create(bytes: &[u8]) -> String {
     let mut hash: u64 = 0xcbf29ce484222325;
     for &byte in bytes {
@@ -109,7 +128,9 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::super::{BuildOptions, Minify};
+    use super::super::BuildOptions;
+    #[cfg(feature = "js")]
+    use super::super::Minify;
     use super::*;
 
     #[test]
@@ -175,6 +196,7 @@ mod tests {
         assert!(dist.join("a/b").is_dir());
     }
 
+    #[cfg(feature = "css")]
     #[tokio::test]
     async fn asset_process_extension_is_case_insensitive() {
         let dir = tempdir().unwrap();
@@ -197,6 +219,7 @@ mod tests {
         assert!(dist.join("THEME.css.map").is_file());
     }
 
+    #[cfg(feature = "css")]
     #[tokio::test]
     async fn asset_process_dispatch_css() {
         let dir = tempdir().unwrap();
@@ -221,6 +244,7 @@ mod tests {
         assert!(dist.join("styles/theme.css.map").is_file());
     }
 
+    #[cfg(feature = "js")]
     #[tokio::test]
     async fn asset_process_dispatch_js() {
         let dir = tempdir().unwrap();
@@ -265,6 +289,7 @@ mod tests {
         assert!(err.contains("unsupported asset type"), "got: {err}");
     }
 
+    #[cfg(feature = "js")]
     #[tokio::test]
     async fn js_hash_sourcemap_pair_maps_entry_and_map() {
         let dir = tempdir().unwrap();

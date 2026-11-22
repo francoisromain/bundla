@@ -1,0 +1,105 @@
+use std::path::Path;
+
+use tokio::sync::broadcast::{self, Sender};
+use webadev::{Config, Server};
+
+use crate::{
+    BuildOptions,
+    watch::{WatchLog, watch_setup},
+};
+
+/// Watch and serve:
+/// - watch `src`,
+/// - build it into `config.dir` on startup and on every change,
+/// - serve it with live reload.
+///
+/// `options` selects the build profile.
+/// `filter` narrows the build to files whose name matches an item; see
+/// [`watch`](crate::watch) for the matching rules. An empty `filter`
+/// watches every file.
+/// `config.base` is ignored and overwritten by `options.base`
+/// so the served prefix matches the build prefix.
+///
+/// Runtime logs are reported on `tx_log`.
+///
+/// This is the [`watch`](crate::watch) with a server on top.
+/// On every successful build the connected browsers reload:
+/// - hot-reload for css when filenames are stable,
+/// - full page reload otherwise.
+///
+/// A failed build keeps the previous build.
+/// The reload script is served, never written to the output files.
+///
+/// # Examples
+///
+/// ```
+/// use std::net::IpAddr;
+///
+/// use bundla::{BuildOptions, ServerConfig, watch_serve};
+/// use tempfile::tempdir;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let dir = tempdir().unwrap();
+///     let src = dir.path().join("src");
+///     std::fs::create_dir_all(&src).unwrap();
+///     std::fs::write(src.join("index.html"), "<html><body><h1>hi</h1></body></html>").unwrap();
+///
+///     let config = ServerConfig {
+///         dir: dir.path().join("dev"),
+///         ip: IpAddr::from([127, 0, 0, 1]),
+///         port: 0,
+///         headers: vec![],
+///         index: "index.html".into(),
+///         base: String::new(),
+///     };
+///
+///     let (tx_log, _rx_log) = tokio::sync::broadcast::channel(100);
+///     let server = watch_serve(&src, &config, &BuildOptions::DEV, tx_log, &[])
+///         .await
+///         .unwrap();
+///     let url = server.url.clone();
+///     let handle = tokio::spawn(async move { server.run().await });
+///
+///     let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
+///     assert!(body.contains("<h1>hi</h1>"));
+///
+///     handle.abort();
+/// }
+/// ```
+pub async fn watch_serve(
+    src: &Path,
+    config: &Config,
+    options: &BuildOptions,
+    tx_log: Sender<WatchLog>,
+    filter: &[&str],
+) -> Result<Server, String> {
+    // Dist-change events: when a build updates files in the dist directory
+    // triggers a browser reload
+    let (tx_dist, _rx_dist) = broadcast::channel(100);
+
+    // The served prefix follows the build: references are rewritten with
+    // `options.base`, so serving under any other prefix would 404 them.
+    let mut config = config.clone();
+    config.base = options.server_base();
+
+    // Watch `src`, build once on startup
+    let watcher = watch_setup(
+        src,
+        &config.dir,
+        options,
+        tx_log,
+        filter,
+        Some(tx_dist.clone()),
+    )
+    .await?;
+
+    let server = Server::bind(tx_dist.clone(), config)
+        .await
+        .map_err(|err| format!("bind error: {err}"))?;
+
+    // Build on every change, then reload the browser
+    tokio::spawn(watcher.run());
+
+    Ok(server)
+}

@@ -5,9 +5,6 @@
 //! - Option to filter watched files by name or suffix,
 //! - Option to serve the bundle.
 //!
-//! Serving is optional: the `serve` feature is on by default, and
-//! `default-features = false` builds without the axum dependency.
-//!
 //! See the [README](https://crates.io/crates/bundla)
 //! for features, CLI, and library usage.
 
@@ -16,24 +13,29 @@
 /// Alias of `webadev::Config`, re-exported from [webadev](https://crates.io/crates/webadev).
 #[cfg(feature = "serve")]
 pub use webadev::Config as ServerConfig;
-
 /// Alias of `webadev::ReloadType`, re-exported from [webadev](https://crates.io/crates/webadev).
+#[cfg(any(feature = "watch", feature = "serve"))]
 pub use webadev::ReloadType;
-
 /// Alias of `webadev::Server`, re-exported from [webadev](https://crates.io/crates/webadev).
 #[cfg(feature = "serve")]
 pub use webadev::Server;
 
-mod build;
-
-pub use build::{BuildOptions, Minify, build};
-
-mod watch;
-
-pub use watch::{BuildCause, Watch, WatchLog, watch};
-
 #[cfg(feature = "serve")]
 mod serve;
-
 #[cfg(feature = "serve")]
-pub use serve::{serve, watch_serve};
+pub use serve::serve;
+
+#[cfg(feature = "watch")]
+mod watch;
+#[cfg(feature = "watch")]
+pub use watch::{BuildCause, Watch, WatchLog, watch};
+
+#[cfg(all(feature = "serve", feature = "watch"))]
+mod watch_serve;
+#[cfg(all(feature = "serve", feature = "watch"))]
+pub use watch_serve::watch_serve;
+
+#[cfg(feature = "build")]
+mod build;
+#[cfg(feature = "build")]
+pub use build::{BuildOptions, Minify, build};

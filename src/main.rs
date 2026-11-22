@@ -105,11 +105,7 @@ async fn run(args: &Args) -> Result<(), String> {
         (true, false) => {
             let tx_log = watch_log_channel();
             let watcher = watch(&args.src, &dist, &options, tx_log, &filter).await?;
-            println!(
-                "watching {}, rebuilding into {}",
-                args.src.display(),
-                dist.display()
-            );
+            println!("src: {}, dist: {}", args.src.display(), dist.display());
 
             watcher.run().await
         }

@@ -1,6 +1,6 @@
 [package]
 name = "bundla"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 description = "Bundle HTML, CSS, and JS/TS: prod build with minification and hashed filenames by default, dev build with sourcemaps, composable watch and serve"
 license = "MIT"
@@ -13,29 +13,54 @@ categories = ["development-tools"]
 exclude = ["client/**", "sessions/**"]
 
 [features]
-default = ["serve"]
-serve = ["webadev/serve"]
+default = ["build", "css", "js", "watch", "serve", "cli"]
+
+# HTML parsing, rewriting and minification: the base of every build.
+build = ["dep:lol_html", "dep:minify-html", "dep:walkdir"]
+# CSS parse, @import rewrite, minification and sourcemaps.
+css = ["dep:lightningcss", "dep:parcel_sourcemap", "build"]
+# JS/TS bundling.
+js = ["dep:rolldown", "build"]
+# Filesystem watch and reload type, without a server.
+watch = ["dep:webadev", "webadev/watch", "dep:tokio", "build"]
+# HTTP server. `watch_serve` needs both `serve` and `watch`.
+serve = ["dep:webadev", "webadev/serve", "dep:tokio", "tokio/rt"]
+# The `bundla` binary; enables every capability it exposes.
+cli = [
+    "dep:clap",
+    "dep:open",
+    "dep:tokio",
+    "build",
+    "css",
+    "js",
+    "watch",
+    "serve",
+    "tokio/macros",
+    "tokio/rt-multi-thread",
+]
 
 [[bin]]
 name = "bundla"
 path = "src/main.rs"
-required-features = ["serve"]
+required-features = ["cli"]
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-lightningcss = "1.0.0-alpha.72"
-lol_html = "3"
-minify-html = "0.18"
-open = "5"
-parcel_sourcemap = "2.1.2"
-rolldown = "1"
-walkdir = "2"
-tokio = { version = "1", features = ["full"] }
-webadev = { version = "0.12.0", default-features = false }
+clap = { version = "4", features = ["derive"], optional = true }
+lightningcss = { version = "1.0.0-alpha.72", optional = true }
+lol_html = { version = "3", optional = true }
+minify-html = { version = "0.18", optional = true }
+open = { version = "5", optional = true }
+parcel_sourcemap = { version = "2.1.2", optional = true }
+rolldown = { version = "1", optional = true }
+walkdir = { version = "2", optional = true }
+tokio = { version = "1", default-features = false, features = ["sync"], optional = true }
+webadev = { version = "0.13.0", default-features = false, optional = true }
 
 [dev-dependencies]
 reqwest = "0.13"
 tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
 
 [package.metadata.docs.rs]
+all-features = true
 rustdoc-args = ["-D", "rustdoc::broken_intra_doc_links"]

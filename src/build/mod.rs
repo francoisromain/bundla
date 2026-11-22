@@ -41,9 +41,9 @@ pub struct Minify(u8);
 impl Minify {
     /// Minify nothing.
     pub const NONE: Minify = Minify(0);
-    /// Minify css.
+    /// Minify css, including inline `<style>` blocks when only `build` is enabled.
     pub const CSS: Minify = Minify(1 << 0);
-    /// Minify js.
+    /// Minify js, including inline `<script>` blocks when only `build` is enabled.
     pub const JS: Minify = Minify(1 << 1);
     /// Minify the output html.
     pub const HTML: Minify = Minify(1 << 2);
@@ -237,25 +237,14 @@ impl BuildOptions {
 ///     let dir = tempdir().unwrap();
 ///     let src = dir.path().join("src");
 ///     let dist = dir.path().join("dist");
-///     fs::create_dir_all(src.join("styles")).unwrap();
-///     fs::create_dir_all(src.join("scripts")).unwrap();
-///     fs::write(src.join("styles/main.css"), "body { color: black; }\n").unwrap();
-///     fs::write(src.join("scripts/app.js"), "console.log('app');\n").unwrap();
-///     fs::write(
-///         src.join("index.html"),
-///         "<html><head>\
-///          <link rel=\"stylesheet\" href=\"./styles/main.css\">\
-///          <script type=\"module\" src=\"./scripts/app.js\"></script>\
-///          </head><body><p>hello</p></body></html>",
-///     )
-///     .unwrap();
+///     fs::create_dir_all(&src).unwrap();
+///     fs::write(src.join("index.html"), "<html><body><h1>hi</h1></body></html>").unwrap();
 ///
 ///     let warnings = build(&src, &dist, &BuildOptions::PROD).await.unwrap();
 ///     assert!(warnings.is_empty(), "got: {warnings:?}");
 ///
 ///     let html = fs::read_to_string(dist.join("index.html")).unwrap();
-///     assert!(html.contains("main-"), "expected a hashed css name: {html}");
-///     assert!(html.contains("app-"), "expected a hashed js name: {html}");
+///     assert!(html.contains("<h1>hi</h1>"), "got: {html}");
 /// }
 /// ```
 pub async fn build(src: &Path, dist: &Path, options: &BuildOptions) -> Result<Vec<String>, String> {
@@ -496,6 +485,7 @@ mod tests {
         assert!(err.contains("unreadable"), "got: {err}");
     }
 
+    #[cfg(all(feature = "css", feature = "js"))]
     #[tokio::test]
     async fn page_bundle_prod_minifies_and_hashes() {
         let dir = tempdir().unwrap();
