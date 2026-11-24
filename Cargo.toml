@@ -1,6 +1,6 @@
 [package]
 name = "bundla"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 description = "Bundle HTML, CSS, and JS/TS: prod build with minification and hashed filenames by default, dev build with sourcemaps, composable watch and serve"
 license = "MIT"
@@ -49,20 +49,31 @@ required-features = ["cli"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"], optional = true }
-lightningcss = { version = "1.0.0-alpha.72", optional = true, default-features = false, features = ["sourcemap"] }
+lightningcss = { version = "1.0.0-alpha.72", optional = true, default-features = false, features = [
+    "sourcemap",
+] }
 lol_html = { version = "3", optional = true }
 minify-html = { version = "0.18", optional = true }
 open = { version = "5", optional = true }
 parcel_sourcemap = { version = "2.1.2", optional = true }
 rolldown = { version = "1", optional = true, default-features = false }
 walkdir = { version = "2", optional = true }
-tokio = { version = "1", default-features = false, features = ["sync"], optional = true }
-webadev = { version = "0.13.0", default-features = false, optional = true }
+tokio = { version = "1", default-features = false, features = [
+    "sync",
+], optional = true }
+webadev = { version = "0.14.0", default-features = false, optional = true }
 
 [dev-dependencies]
 reqwest = "0.13"
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
+tokio = { version = "1", features = [
+    "macros",
+    "rt-multi-thread",
+    "net",
+    "io-util",
+    "time",
+    "sync",
+] }
 
 [package.metadata.docs.rs]
 all-features = true
