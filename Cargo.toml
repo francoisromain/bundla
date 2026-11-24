@@ -15,8 +15,10 @@ exclude = ["client/**", "sessions/**"]
 [features]
 default = ["build", "css", "js", "watch", "serve", "cli"]
 
-# HTML parsing, rewriting and minification: the base of every build.
-build = ["dep:lol_html", "dep:minify-html", "dep:walkdir"]
+# HTML parsing, rewriting and static asset copying: the base of every build.
+build = ["dep:lol_html", "dep:walkdir"]
+# HTML minification (`Minify::HTML` / `Minify::ALL`). Pulls minify-html and its own oxc toolchain.
+html-minify = ["build", "dep:minify-html"]
 # CSS parse, @import rewrite, minification and sourcemaps.
 css = ["dep:lightningcss", "dep:parcel_sourcemap", "build"]
 # JS/TS bundling.
@@ -32,6 +34,7 @@ cli = [
     "dep:tokio",
     "build",
     "css",
+    "html-minify",
     "js",
     "watch",
     "serve",
@@ -46,12 +49,12 @@ required-features = ["cli"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"], optional = true }
-lightningcss = { version = "1.0.0-alpha.72", optional = true }
+lightningcss = { version = "1.0.0-alpha.72", optional = true, default-features = false, features = ["sourcemap"] }
 lol_html = { version = "3", optional = true }
 minify-html = { version = "0.18", optional = true }
 open = { version = "5", optional = true }
 parcel_sourcemap = { version = "2.1.2", optional = true }
-rolldown = { version = "1", optional = true }
+rolldown = { version = "1", optional = true, default-features = false }
 walkdir = { version = "2", optional = true }
 tokio = { version = "1", default-features = false, features = ["sync"], optional = true }
 webadev = { version = "0.13.0", default-features = false, optional = true }

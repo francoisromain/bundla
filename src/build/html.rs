@@ -121,6 +121,7 @@ pub fn html_rewrite(html: &str, map: &HashMap<String, String>) -> Result<String,
 //
 // Tags placed between start-tag attributes are still parsed as attributes and
 // can be corrupted; this is an upstream minify-html bug (#232).
+#[cfg(feature = "html-minify")]
 pub fn html_minify(html: &str, minify: Minify) -> Result<String, String> {
     let mut cfg = minify_html::Cfg::new();
     cfg.keep_closing_tags = true;
@@ -130,6 +131,11 @@ pub fn html_minify(html: &str, minify: Minify) -> Result<String, String> {
     cfg.preserve_brace_template_syntax = true;
     let minified = minify_html::minify(html.as_bytes(), &cfg);
     String::from_utf8(minified).map_err(|err| format!("html minify error: {err}"))
+}
+
+#[cfg(not(feature = "html-minify"))]
+pub fn html_minify(_html: &str, _minify: Minify) -> Result<String, String> {
+    Err("html minification requires bundla's `html-minify` feature".to_string())
 }
 
 #[cfg(test)]
@@ -256,6 +262,7 @@ mod tests {
         assert!(out.contains("./a.js"));
     }
 
+    #[cfg(feature = "html-minify")]
     #[test]
     fn minify_compresses_and_keeps_structure() {
         let html = "<html>\n  <head>\n    <title>t</title>\n  </head>\n  <body>\n    <p>hello world</p>\n  </body>\n</html>";
@@ -267,6 +274,7 @@ mod tests {
         assert!(out.len() < html.len());
     }
 
+    #[cfg(feature = "html-minify")]
     #[test]
     fn minify_html_only_keeps_inline_css_and_js() {
         let html = "<html>\n  <head>\n    <style>body { color: red; }</style>\n    <script>const config = { color: 'red' };</script>\n  </head>\n  <body>\n    <p>hello world</p>\n  </body>\n</html>";
@@ -280,6 +288,7 @@ mod tests {
         assert!(out.len() < html.len());
     }
 
+    #[cfg(feature = "html-minify")]
     #[test]
     fn minify_all_minifies_inline_css_and_js() {
         let html = "<html><head><style>body { color: red; }</style><script>const x = 1;</script></head><body>x</body></html>";
@@ -289,6 +298,7 @@ mod tests {
         assert!(out.contains("const x=1"), "got: {out}");
     }
 
+    #[cfg(feature = "html-minify")]
     #[test]
     fn minify_preserves_brace_template_syntax_in_text() {
         let html = "<html><body><p>{{  hello   }}</p>{%  if x  %}<span>x</span>{%  endif  %}</body></html>";
@@ -297,5 +307,12 @@ mod tests {
         assert!(out.contains("{{  hello   }}"), "got: {out}");
         assert!(out.contains("{%  if x  %}"), "got: {out}");
         assert!(out.contains("{%  endif  %}"), "got: {out}");
+    }
+
+    #[cfg(not(feature = "html-minify"))]
+    #[test]
+    fn minify_without_feature_errors() {
+        let err = html_minify("<p>hello</p>", Minify::ALL).unwrap_err();
+        assert!(err.contains("html-minify"), "got: {err}");
     }
 }

@@ -485,7 +485,7 @@ mod tests {
         assert!(err.contains("unreadable"), "got: {err}");
     }
 
-    #[cfg(all(feature = "css", feature = "js"))]
+    #[cfg(all(feature = "css", feature = "html-minify", feature = "js"))]
     #[tokio::test]
     async fn page_bundle_prod_minifies_and_hashes() {
         let dir = tempdir().unwrap();

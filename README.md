@@ -106,6 +106,18 @@ bundla -dws --port 9000 --open
 
 ## Library
 
+### Cargo features
+
+Default features enable everything. For a smaller build, disable defaults and pick only what you need:
+
+- `build`: HTML parsing/rewriting and static asset copying
+- `css`: CSS bundling and minification
+- `js`: JS/TS bundling (rolldown)
+- `html-minify`: HTML minification (`Minify::HTML` / `Minify::ALL`, including `BuildOptions::PROD`)
+- `watch`: watcher
+- `serve`: HTTP server
+- `cli`: binary
+
 ### 1. Serve only
 
 ```rust

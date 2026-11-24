@@ -207,6 +207,22 @@ bundla -dws --port 9000 --open</code></pre>
 
     <h2 id="library">Library</h2>
 
+    <h3>Cargo features</h3>
+    <p>Default features enable everything. For a smaller build, disable defaults and pick only what you need:</p>
+    <ul>
+      <li><code>build</code>: HTML parsing/rewriting and static asset copying</li>
+      <li><code>css</code>: CSS bundling and minification</li>
+      <li><code>js</code>: JS/TS bundling (rolldown)</li>
+      <li>
+        <code>html-minify</code>: HTML minification
+        (<code>Minify::HTML</code> / <code>Minify::ALL</code>, including
+        <code>BuildOptions::PROD</code>)
+      </li>
+      <li><code>watch</code>: watcher</li>
+      <li><code>serve</code>: HTTP server</li>
+      <li><code>cli</code>: binary</li>
+    </ul>
+
     <h3>1. Serve only</h3>
     <pre><code>use std::net::IpAddr;
 use bundla::{ServerConfig, serve};
