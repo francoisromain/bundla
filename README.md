@@ -2,7 +2,7 @@
 
 <p align="center">
   <br>
-  <a href="https://github.com/francoisromain/bundla">
+  <a href="https://crates.io/crates/bundla">
     <img src="https://raw.githubusercontent.com/francoisromain/bundla/main/client/src/assets/bundla.svg" alt="Bundla logo" width="160">
   </a>
   <br>
@@ -105,18 +105,6 @@ bundla -dws --port 9000 --open
 ```
 
 ## Library
-
-### Cargo features
-
-Default features enable everything. For a smaller build, disable defaults and pick only what you need:
-
-- `build`: HTML parsing/rewriting and static asset copying
-- `css`: CSS bundling and minification
-- `js`: JS/TS bundling (rolldown)
-- `html-minify`: HTML minification (`Minify::HTML` / `Minify::ALL`, including `BuildOptions::PROD`)
-- `watch`: watcher
-- `serve`: HTTP server
-- `cli`: binary
 
 ### 1. Serve only
 
@@ -281,11 +269,12 @@ In `watch_serve`, `ServerConfig.base` is ignored and overwritten by `BuildOption
 
 ### Feature flags
 
-The `cli` feature is enabled by default: it pulls in every capability and builds the `bundla` binary. With `default-features = false`, pick only what you need:
+Default features enable everything. For a smaller build, use `default-features = false`, and pick only what you need:
 
 | Feature | Public API | Dependencies |
 | --- | --- | --- |
-| `build` | `build`, `BuildOptions`, `Minify` | `lol_html`, `minify-html`, `walkdir` |
+| `build` | `build`, `BuildOptions`, `Minify` | `lol_html`, `walkdir` |
+| `html-minify` | HTML minification | `minify-html` |
 | `css` | CSS bundling inside `build` | `lightningcss`, `parcel_sourcemap` (and `build`) |
 | `js` | JS/TS bundling inside `build` | `rolldown` (and `build`) |
 | `watch` | `watch`, `Watch`, `WatchLog`, `BuildCause` | `webadev/watch`, `tokio` (and `build`) |
@@ -296,13 +285,13 @@ The `cli` feature is enabled by default: it pulls in every capability and builds
 
 `Minify::CSS` and `Minify::JS` also minify inline `<style>`/`<script>` blocks with only `build` enabled. The `css`/`js` features are required for external assets only.
 
+HTML minification (`Minify::HTML` / `Minify::ALL`, including `BuildOptions::PROD`) requires the `html-minify` feature, which is enabled by default.
+
 For example, to build HTML and CSS and watch the sources — without the JS bundler, the server or the CLI:
 
 ```toml
-bundla = { version = "0.9", default-features = false, features = ["build", "css", "watch"] }
+bundla = { version = "0.10", default-features = false, features = ["build", "css", "watch"] }
 ```
-
-In `0.8`, `default-features = false` still included `build` and `watch`; it now includes nothing. Enable the features you use explicitly.
 
 ## Local installation
 

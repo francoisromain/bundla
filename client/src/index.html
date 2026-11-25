@@ -15,7 +15,7 @@
 
     <p align="center">
       <br />
-      <a href="https://github.com/francoisromain/bundla">
+      <a href="https://crates.io/crates/bundla">
         <img src="./assets/bundla.svg" alt="Bundla logo" width="160" />
       </a>
       <br />
@@ -207,22 +207,6 @@ bundla -dws --port 9000 --open</code></pre>
 
     <h2 id="library">Library</h2>
 
-    <h3>Cargo features</h3>
-    <p>Default features enable everything. For a smaller build, disable defaults and pick only what you need:</p>
-    <ul>
-      <li><code>build</code>: HTML parsing/rewriting and static asset copying</li>
-      <li><code>css</code>: CSS bundling and minification</li>
-      <li><code>js</code>: JS/TS bundling (rolldown)</li>
-      <li>
-        <code>html-minify</code>: HTML minification
-        (<code>Minify::HTML</code> / <code>Minify::ALL</code>, including
-        <code>BuildOptions::PROD</code>)
-      </li>
-      <li><code>watch</code>: watcher</li>
-      <li><code>serve</code>: HTTP server</li>
-      <li><code>cli</code>: binary</li>
-    </ul>
-
     <h3>1. Serve only</h3>
     <pre><code>use std::net::IpAddr;
 use bundla::{ServerConfig, serve};
@@ -388,41 +372,70 @@ server.run().await?; // blocks until shutdown</code></pre>
     </p>
 
     <h3>Feature flags</h3>
-    <p>The <code>cli</code> feature is enabled by default: it pulls in every
-      capability and builds the <code>bundla</code> binary. With
-      <code>default-features = false</code>, pick only what you need:</p>
+    <p>
+      Default features enable everything. For a smaller build, use
+      <code>default-features = false</code>, and pick only what you need:
+    </p>
     <table>
-      <tr><th>Feature</th><th>Public API</th><th>Dependencies</th></tr>
-      <tr><td><code>build</code></td>
+      <tr>
+        <th>Feature</th>
+        <th>Public API</th>
+        <th>Dependencies</th>
+      </tr>
+      <tr>
+        <td><code>build</code></td>
         <td><code>build</code>, <code>BuildOptions</code>, <code>Minify</code></td>
-        <td><code>lol_html</code>, <code>minify-html</code>, <code>walkdir</code></td></tr>
-      <tr><td><code>css</code></td><td>CSS bundling inside <code>build</code></td>
-        <td><code>lightningcss</code>, <code>parcel_sourcemap</code> (and <code>build</code>)</td></tr>
-      <tr><td><code>js</code></td><td>JS/TS bundling inside <code>build</code></td>
-        <td><code>rolldown</code> (and <code>build</code>)</td></tr>
-      <tr><td><code>watch</code></td>
+        <td><code>lol_html</code>, <code>walkdir</code></td>
+      </tr>
+      <tr>
+        <td><code>html-minify</code></td>
+        <td>HTML minification</td>
+        <td><code>minify-html</code></td>
+      </tr>
+      <tr>
+        <td><code>css</code></td>
+        <td>CSS bundling inside <code>build</code></td>
+        <td><code>lightningcss</code>, <code>parcel_sourcemap</code> (and <code>build</code>)</td>
+      </tr>
+      <tr>
+        <td><code>js</code></td>
+        <td>JS/TS bundling inside <code>build</code></td>
+        <td><code>rolldown</code> (and <code>build</code>)</td>
+      </tr>
+      <tr>
+        <td><code>watch</code></td>
         <td><code>watch</code>, <code>Watch</code>, <code>WatchLog</code>, <code>BuildCause</code></td>
-        <td><code>webadev/watch</code>, <code>tokio</code> (and <code>build</code>)</td></tr>
-      <tr><td><code>serve</code></td>
+        <td><code>webadev/watch</code>, <code>tokio</code> (and <code>build</code>)</td>
+      </tr>
+      <tr>
+        <td><code>serve</code></td>
         <td><code>serve</code>, <code>ServerConfig</code>, <code>Server</code></td>
-        <td><code>webadev/serve</code>, <code>tokio/rt</code></td></tr>
-      <tr><td><code>cli</code></td><td>the <code>bundla</code> binary</td>
-        <td><code>clap</code>, <code>open</code>, <code>tokio</code> and every feature above</td></tr>
+        <td><code>webadev/serve</code>, <code>tokio/rt</code></td>
+      </tr>
+      <tr>
+        <td><code>cli</code></td>
+        <td>the <code>bundla</code> binary</td>
+        <td><code>clap</code>, <code>open</code>, <code>tokio</code> and every feature above</td>
+      </tr>
     </table>
     <p><code>ReloadType</code> is available with either <code>watch</code> or
       <code>serve</code>. <code>watch_serve</code> needs both. Referencing a CSS
       or JS asset without the matching feature is a hard error that names the
-      feature to enable, so a build never silently drops an asset.</p>
+      feature to enable, so a build never silently drops an asset.
+    </p>
     <p><code>Minify::CSS</code> and <code>Minify::JS</code> also minify inline
       <code>&lt;style&gt;</code>/<code>&lt;script&gt;</code> blocks with only
       <code>build</code> enabled; the <code>css</code>/<code>js</code> features
-      are required for external assets only.</p>
+      are required for external assets only.
+    </p>
+    <p>
+      HTML minification (<code>Minify::HTML</code> / <code>Minify::ALL</code>,
+      including <code>BuildOptions::PROD</code>) requires the
+      <code>html-minify</code> feature, which is enabled by default.
+    </p>
     <p>For example, to build HTML and CSS and watch the sources — without the JS
       bundler, the server or the CLI:</p>
-    <pre><code>bundla = { version = "0.9", default-features = false, features = ["build", "css", "watch"] }</code></pre>
-    <p>In <code>0.8</code>, <code>default-features = false</code> still included
-      <code>build</code> and <code>watch</code>; it now includes nothing.
-      Enable the features you use explicitly.</p>
+    <pre><code>bundla = { version = "0.10", default-features = false, features = ["build", "css", "watch"] }</code></pre>
 
     <h2 id="local-installation">Local installation</h2>
     <pre><code># clone the repo
